@@ -39,29 +39,54 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field
 from functools import lru_cache, wraps
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
-import agate
-from dbt.adapters.base import BaseRelation
-from dbt.adapters.factory import Adapter, get_adapter_class_by_name
+# We maintain the smallest possible surface area of dbt imports
+from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.config.runtime import RuntimeConfig
 from dbt.context.providers import generate_runtime_model_context
-from dbt.contracts.connection import AdapterResponse
-from dbt.contracts.graph.manifest import (
-    ManifestNode,
-    MaybeNonSource,
-    MaybeParsedSource,
-    NodeType,
-)
-from dbt.contracts.graph.parsed import ColumnInfo
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
+from dbt.lib import create_task
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
-from dbt.task.sql import SqlCompileRunner, SqlExecuteRunner
+from dbt.task.sql import SqlCompileRunner
 
 from dbt_core_interface.utils import has_jinja
 
+
+if TYPE_CHECKING:
+    # These imports are only used for type checking
+    from agate import Table
+    from dbt.adapters.base import BaseRelation
+    from dbt.adapters.factory import Adapter
+    from dbt.contracts.connection import AdapterResponse
+    from dbt.contracts.graph.manifest import (
+        ManifestNode,
+        MaybeNonSource,
+        MaybeParsedSource,
+    )
+
+    # TODO: Make this a dispatch mapping
+    from dbt.contracts.graph.parsed import ColumnInfo
+    from dbt.task.build import BuildTask
+    from dbt.task.list import ListTask
+    from dbt.task.run import RunTask
+    from dbt.task.run_operation import RunOperationTask
+    from dbt.task.seed import SeedTask
+    from dbt.task.snapshot import SnapshotTask
+    from dbt.task.test import TestTask
 
 __all__ = [
     "DbtProject",
@@ -126,8 +151,8 @@ class DbtManifestProxy(UserDict):
 class DbtAdapterExecutionResult:
     """Interface for execution results, this keeps us 1 layer removed from dbt interfaces which may change."""
 
-    adapter_response: AdapterResponse
-    table: agate.Table
+    adapter_response: "AdapterResponse"
+    table: "Table"
     raw_code: str
     compiled_code: str
 
@@ -138,7 +163,7 @@ class DbtAdapterCompilationResult:
 
     raw_code: str
     compiled_code: str
-    node: ManifestNode
+    node: "ManifestNode"
     injected_code: Optional[str] = None
 
 
@@ -169,7 +194,6 @@ class DbtProject:
         # Utilities
         self._sql_parser: Optional[SqlBlockParser] = None
         self._macro_parser: Optional[SqlMacroParser] = None
-        self._sql_runner: Optional[SqlExecuteRunner] = None
         self._sql_compiler: Optional[SqlCompileRunner] = None
 
         # Mutexes
@@ -187,7 +211,7 @@ class DbtProject:
             threads=config.threads,
         )
 
-    def get_adapter_cls(self) -> Adapter:
+    def get_adapter_cls(self) -> "Adapter":
         """Get the adapter class associated with the dbt profile."""
         return get_adapter_class_by_name(self.dbt_config.credentials.type)
 
@@ -216,7 +240,7 @@ class DbtProject:
         return self._adapter
 
     @adapter.setter
-    def adapter(self, adapter: Adapter):
+    def adapter(self, adapter: "Adapter"):
         """Verify connection and reset TTL on adapter set, update adapter prop ref on config."""
         # Ensure safe concurrent access to the adapter
         # Currently we choose to drop attempted mutations while an existing mutation is in progress
@@ -275,7 +299,7 @@ class DbtProject:
             raise parse_error
         self.write_manifest_artifact()
 
-    def _verify_connection(self, adapter: Adapter) -> Adapter:
+    def _verify_connection(self, adapter: "Adapter") -> "Adapter":
         """Verification for adapter + profile. Used as a passthrough,
         This also seeds the master connection."""
         try:
@@ -310,7 +334,7 @@ class DbtProject:
 
         return _with_conn
 
-    def generate_runtime_model_context(self, node: ManifestNode):
+    def generate_runtime_model_context(self, node: "ManifestNode"):
         """Wraps dbt context provider."""
         return generate_runtime_model_context(node, self.dbt_config, self.dbt_project)
 
@@ -348,7 +372,7 @@ class DbtProject:
         self.compile_code.cache_clear()
 
     @lru_cache(maxsize=10)
-    def get_ref_node(self, target_model_name: str) -> MaybeNonSource:
+    def get_ref_node(self, target_model_name: str) -> "MaybeNonSource":
         """Get a `ManifestNode` from a dbt project model name
         as one would in a {{ ref(...) }} macro call."""
         return self.dbt_project.resolve_ref(
@@ -361,7 +385,7 @@ class DbtProject:
     @lru_cache(maxsize=10)
     def get_source_node(
         self, target_source_name: str, target_table_name: str
-    ) -> MaybeParsedSource:
+    ) -> "MaybeParsedSource":
         """Get a `ManifestNode` from a dbt project source name and table name
         as one would in a {{ source(...) }} macro call."""
         return self.dbt_project.resolve_source(
@@ -372,7 +396,7 @@ class DbtProject:
         )
 
     @lru_cache(maxsize=10)
-    def get_node_by_path(self, path: str) -> Optional[ManifestNode]:
+    def get_node_by_path(self, path: str) -> Optional["ManifestNode"]:
         """Find an existing node given relative file path. TODO: We can include
         Path obj support and make this more robust.
         """
@@ -384,7 +408,7 @@ class DbtProject:
     @contextmanager
     def generate_server_node(
         self, sql: str, node_name: str = "anonymous_node"
-    ) -> Generator[ManifestNode, None, None]:
+    ) -> Generator["ManifestNode", None, None]:
         """Get a transient node for SQL execution against adapter.
         This is a context manager that will clear the node after execution
         and leverages a mutex during manifest mutation."""
@@ -397,7 +421,7 @@ class DbtProject:
 
     def unsafe_generate_server_node(
         self, sql: str, node_name: str = "anonymous_node"
-    ) -> ManifestNode:
+    ) -> "ManifestNode":
         """Get a transient node for SQL execution against adapter. This is faster than
         `generate_server_node` but does not clear the node after execution. That is left to the caller.
         It is also not thread safe in and of itself and requires the caller to manage jitter or mutexes.
@@ -436,7 +460,7 @@ class DbtProject:
 
     def adapter_execute(
         self, sql: str, auto_begin: bool = False, fetch: bool = False
-    ) -> Tuple[AdapterResponse, agate.Table]:
+    ) -> Tuple["AdapterResponse", "Table"]:
         """Wraps adapter.execute. Execute SQL against database. This is more on-the-rails
         than `execute_code` which intelligently handles jinja compilation provides a proxy result.
         """
@@ -456,8 +480,8 @@ class DbtProject:
             compiled_code,
         )
 
-    def execute_from_node(self, node: ManifestNode) -> DbtAdapterExecutionResult:
-        """Execute dbt SQL statement against database from a ManifestNode."""
+    def execute_from_node(self, node: "ManifestNode") -> DbtAdapterExecutionResult:
+        """Execute dbt SQL statement against database from a "ManifestNode"."""
         raw_code: str = getattr(node, RAW_CODE)
         compiled_code: Optional[str] = getattr(node, COMPILED_CODE, None)
         if compiled_code:
@@ -503,7 +527,7 @@ class DbtProject:
         finally:
             self._clear_node(temp_node_id)
 
-    def compile_from_node(self, node: ManifestNode) -> DbtAdapterCompilationResult:
+    def compile_from_node(self, node: "ManifestNode") -> DbtAdapterCompilationResult:
         """Compiles existing node. ALL compilation passes through this code path. Raw SQL is marshalled
         by the caller into a mock node before being passed into this method. Existing nodes can
         be passed in here directly.
@@ -524,7 +548,7 @@ class DbtProject:
 
     def get_relation(
         self, database: str, schema: str, name: str
-    ) -> Optional[BaseRelation]:
+    ) -> Optional["BaseRelation"]:
         """Wrapper for `adapter.get_relation`."""
         return self.adapter.get_relation(database, schema, name)
 
@@ -532,28 +556,28 @@ class DbtProject:
         """A simple interface for checking if a relation exists in the database."""
         return self.adapter.get_relation(database, schema, name) is not None
 
-    def node_exists(self, node: ManifestNode) -> bool:
+    def node_exists(self, node: "ManifestNode") -> bool:
         """A simple interface for checking if a node exists in the database."""
         return (
             self.adapter.get_relation(self.create_relation_from_node(node)) is not None
         )
 
-    def create_relation(self, database: str, schema: str, name: str) -> BaseRelation:
+    def create_relation(self, database: str, schema: str, name: str) -> "BaseRelation":
         """Wrapper for `adapter.Relation.create`."""
         return self.adapter.Relation.create(database, schema, name)
 
-    def create_relation_from_node(self, node: ManifestNode) -> BaseRelation:
+    def create_relation_from_node(self, node: "ManifestNode") -> "BaseRelation":
         """Wrapper for `adapter.Relation.create_from`."""
         return self.adapter.Relation.create_from(self.dbt_config, node)
 
-    def get_columns_in_node(self, node: ManifestNode) -> List[str]:
+    def get_columns_in_node(self, node: "ManifestNode") -> List[str]:
         """Wrapper for `adapter.get_columns_in_relation`."""
         return self.adapter.get_columns_in_relation(
             self.create_relation_from_node(node)
         )
 
     @lru_cache(maxsize=10)
-    def get_columns(self, node: ManifestNode) -> List[ColumnInfo]:
+    def get_columns(self, node: "ManifestNode") -> List["ColumnInfo"]:
         """Get a list of columns from a compiled node.
         TODO: This is not fully baked. The API is stable but the implementation is not.
         """
@@ -572,7 +596,7 @@ class DbtProject:
 
     def get_or_create_relation(
         self, database: str, schema: str, name: str
-    ) -> Tuple[BaseRelation, bool]:
+    ) -> Tuple["BaseRelation", bool]:
         """Get relation or create if not exists. Returns tuple of relation and
         boolean result of whether it existed ie: (relation, did_exist)."""
         ref = self.get_relation(database, schema, name)
@@ -582,7 +606,7 @@ class DbtProject:
             else (self.create_relation(database, schema, name), False)
         )
 
-    def create_schema(self, node: ManifestNode):
+    def create_schema(self, node: "ManifestNode"):
         """Create a schema in the database leveraging dbt-core's builtin macro."""
         return self.execute_macro(
             "create_schema",
@@ -590,8 +614,8 @@ class DbtProject:
         )
 
     def materialize(
-        self, node: ManifestNode, temporary: bool = True
-    ) -> Tuple[AdapterResponse, None]:
+        self, node: "ManifestNode", temporary: bool = True
+    ) -> Tuple["AdapterResponse", None]:
         """Materialize a table in the database.
         TODO: This is not fully baked. The API is stable but the implementation is not.
         """
@@ -639,3 +663,15 @@ class DbtProject:
         if self._macro_parser is None:
             self._macro_parser = SqlMacroParser(self.dbt_config, self.dbt_project)
         return self._macro_parser
+
+    def get_task(
+        self, typ: str, args: ...
+    ) -> Union[
+        RunTask, ListTask, SeedTask, TestTask, BuildTask, SnapshotTask, RunOperationTask
+    ]:
+        """Get a dbt-core task by type."""
+        return create_task(typ, self.dbt_project, self.dbt_config)
+
+    def run(self):
+        """Run the dbt project."""
+        return self.get_task("run", {}).execute_with_hooks

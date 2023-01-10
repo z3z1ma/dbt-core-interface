@@ -22,7 +22,7 @@ Pygments = ">=2.10.0"
 black = ">=21.10b0"
 coverage = { extras = ["toml"], version = ">=6.2" }
 darglint = ">=1.8.1"
-ruff = "^0.0.214"
+ruff = ">=0.0.214"
 furo = ">=2021.11.12"
 isort = ">=5.10.1"
 mypy = ">=0.930"
