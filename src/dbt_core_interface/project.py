@@ -35,9 +35,10 @@ import threading
 import time
 import uuid
 from collections import UserDict
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from copy import copy
 from dataclasses import dataclass, field
+from enum import Enum
 from functools import lru_cache, wraps
 from typing import (
     TYPE_CHECKING,
@@ -45,9 +46,11 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    Iterable,
     List,
     Optional,
     Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -55,9 +58,7 @@ from typing import (
 # We maintain the smallest possible surface area of dbt imports
 from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.config.runtime import RuntimeConfig
-from dbt.context.providers import generate_runtime_model_context
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
-from dbt.lib import create_task
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
@@ -77,16 +78,9 @@ if TYPE_CHECKING:
         MaybeNonSource,
         MaybeParsedSource,
     )
-
-    # TODO: Make this a dispatch mapping
     from dbt.contracts.graph.parsed import ColumnInfo
-    from dbt.task.build import BuildTask
-    from dbt.task.list import ListTask
-    from dbt.task.run import RunTask
-    from dbt.task.run_operation import RunOperationTask
-    from dbt.task.seed import SeedTask
-    from dbt.task.snapshot import SnapshotTask
-    from dbt.task.test import TestTask
+    from dbt.task.runnable import GraphRunnableTask
+
 
 __all__ = [
     "DbtProject",
@@ -100,6 +94,16 @@ __all__ = [
 ]
 
 T = TypeVar("T")
+
+
+class DbtCommand(str, Enum):
+    RUN = "run"
+    BUILD = "build"
+    TEST = "test"
+    SEED = "seed"
+    RUN_OPERATION = "run-operation"
+    LIST = "list"
+    SNAPSHOT = "snapshot"
 
 
 @dataclass
@@ -167,6 +171,66 @@ class DbtAdapterCompilationResult:
     injected_code: Optional[str] = None
 
 
+class DbtTaskConfiguration:
+    """A container for task configuration with sane defaults.
+    Users should enforce an interface for their tasks via a
+    factory method that returns an instance of this class."""
+
+    def __init__(self, profile: str, target: str, **kwargs):
+        self.profile = profile  # type: str
+        self.target = target  # type: str
+        self.kwargs = kwargs or {}  # type: Dict[str, Any]
+        self.threads = kwargs.get("threads", 1)  # type: int
+        self.single_threaded = kwargs.get(
+            "single_threaded", self.threads == 1
+        )  # type: bool
+        self.state_id = kwargs.get("state_id", None)  # type: Optional[str]
+        self.version_check = kwargs.get("version_check", False)  # type: bool
+        self.resource_types = kwargs.get(
+            "resource_types", None
+        )  # type: Optional[List[str]]
+        self.models = kwargs.get("models", None)  # type: Union[None, str, List[str]]
+        self.select = kwargs.get("select", None)  # type: Union[None, str, List[str]]
+        self.exclude = kwargs.get("exclude", None)  # type: Union[None, str, List[str]]
+        self.selector_name = kwargs.get("selector_name", None)  # type: Optional[str]
+        self.state = kwargs.get("state", None)  # type: Optional[str]
+        self.defer = kwargs.get("defer", False)  # type: bool
+        self.fail_fast = kwargs.get("fail_fast", False)  # type: bool
+        self.full_refresh = kwargs.get("full_refresh", False)  # type: bool
+        self.store_failures = kwargs.get("store_failures", False)  # type: bool
+        self.indirect_selection = kwargs.get("indirect_selection", False)  # type: bool
+        self.data = kwargs.get("data", False)  # type: bool
+        # or data_type
+        self.schema = kwargs.get("schema", False)  # type: bool
+        # or schema_type
+        self.show = kwargs.get("show", False)  # type: bool
+        self.output = kwargs.get("output", "name")  # type: Optional[str]
+        self.output_keys = kwargs.get(
+            "output_keys", None
+        )  # type: Union[None, str, List[str]]
+        self.macro = kwargs.get("macro", None)  # type: Optional[str]
+        self.args = kwargs.get("args", "{}")  # type:str
+        self.quiet = kwargs.get("quiet", True)  # type: bool
+
+    @classmethod
+    def with_config(cls, config: RuntimeConfig, **kwargs):
+        """Create a task configuration container from a DbtProject's runtime config.
+        This is a good example of where static typing is not necessary. Developers can just
+        pass in whatever they want and it will be passed through to the task configuration container.
+        Users of the library are free to pass in any mapping derived from their own implementation for
+        their own hyper specific task. We are not in the business of remaking dbt-core's task configuration.
+        """
+        threads = kwargs.pop("threads", config.threads)
+        kwargs.pop("single_threaded", None)  # this is a derived property
+        return cls(
+            config.profile_name,
+            config.target_name,
+            threads=threads,
+            **kwargs,
+            single_threaded=threads == 1,
+        )
+
+
 class DbtProject:
     """Container for a dbt project. The dbt attribute is the primary interface for
     dbt-core. The adapter attribute is the primary interface for the dbt adapter."""
@@ -186,20 +250,20 @@ class DbtProject:
             target=target,
             profiles_dir=profiles_dir,
             project_dir=project_dir,
-            vars=vars,
         )
-
-        self.parse_project(init=True)
-
-        # Utilities
-        self._sql_parser: Optional[SqlBlockParser] = None
-        self._macro_parser: Optional[SqlMacroParser] = None
-        self._sql_compiler: Optional[SqlCompileRunner] = None
+        self.base_config.vars = vars
 
         # Mutexes
         self.adapter_mutex = threading.Lock()
         self.parsing_mutex = threading.Lock()
         self.manifest_mutation_mutex = threading.Lock()
+
+        # First time initialization
+        self.parse_project(init=True)
+
+        # Utilities
+        self._sql_parser: Optional[SqlBlockParser] = None
+        self._macro_parser: Optional[SqlMacroParser] = None
 
     @classmethod
     def from_config(cls, config: DbtConfiguration) -> "DbtProject":
@@ -213,7 +277,7 @@ class DbtProject:
 
     def get_adapter_cls(self) -> "Adapter":
         """Get the adapter class associated with the dbt profile."""
-        return get_adapter_class_by_name(self.dbt_config.credentials.type)
+        return get_adapter_class_by_name(self.config.credentials.type)
 
     def initialize_adapter(self):
         """Initialize a dbt adapter."""
@@ -228,7 +292,7 @@ class DbtProject:
                 pass
         # The adapter.setter verifies connection, resets TTL, and updates adapter ref on config
         # this is thread safe by virtue of the adapter_mutex on the adapter.setter
-        self.adapter = self.get_adapter_cls()(self.dbt_config)
+        self.adapter = self.get_adapter_cls()(self.config)
 
     @property
     def adapter(self):
@@ -250,7 +314,7 @@ class DbtProject:
                 self._adapter = adapter
                 self._adapter.connections.set_connection_name()
                 self._adapter_created_at = time.time()
-                self.dbt_config.adapter = self.adapter
+                self.config.adapter = self.adapter
             finally:
                 self.adapter_mutex.release()
 
@@ -269,33 +333,31 @@ class DbtProject:
                 set_from_args(self.base_config, self.base_config)
                 # We can think of `RuntimeConfig` as a dbt-core "context" object
                 # where a `Project` meets a `Profile` and is a superset of them both
-                self.dbt_config = RuntimeConfig.from_args(self.base_config)
+                self.config = RuntimeConfig.from_args(self.base_config)
                 self.initialize_adapter()
 
             _project_parser = ManifestLoader(
-                self.dbt_config,
-                self.dbt_config.load_dependencies(),
+                self.config,
+                self.config.load_dependencies(),
                 self.adapter.connections.set_query_header,
             )
 
-            self.dbt_project = _project_parser.load()
-            self.dbt_project.build_flat_graph()
+            self.manifest = _project_parser.load()
+            self.manifest.build_flat_graph()
             _project_parser.save_macros_to_adapter(self.adapter)
 
             self._sql_parser = None
             self._macro_parser = None
-            self._sql_compiler = None
-            self._sql_runner = None
 
     def safe_parse_project(self, reinit: bool = False) -> None:
         """A safe version of parse_project that will not mutate the config if parsing fails."""
         if reinit:
             self.clear_internal_caches()
-        _config_pointer = copy(self.dbt_config)
+        _config_pointer = copy(self.config)
         try:
             self.parse_project(init=reinit)
         except Exception as parse_error:
-            self.dbt_config = _config_pointer
+            self.config = _config_pointer
             raise parse_error
         self.write_manifest_artifact()
 
@@ -336,31 +398,34 @@ class DbtProject:
 
     def generate_runtime_model_context(self, node: "ManifestNode"):
         """Wraps dbt context provider."""
-        return generate_runtime_model_context(node, self.dbt_config, self.dbt_project)
+        # Purposefully deferred due to its many dependencies
+        from dbt.context.providers import generate_runtime_model_context
+
+        return generate_runtime_model_context(node, self.config, self.manifest)
 
     @property
     def project_name(self) -> str:
         """dbt project name."""
-        return self.dbt_config.project_name
+        return self.config.project_name
 
     @property
     def project_root(self) -> str:
         """dbt project root."""
-        return self.dbt_config.project_root
+        return self.config.project_root
 
     @property
-    def manifest(self) -> DbtManifestProxy:
+    def manifest_dict(self) -> DbtManifestProxy:
         """dbt manifest dict."""
-        return DbtManifestProxy(self.dbt_project.flat_graph)
+        return DbtManifestProxy(self.manifest.flat_graph)
 
     def write_manifest_artifact(self) -> None:
         """Write a manifest.json to disk. Because our project is in memory, this is useful for
         integrating with other tools that expect a manifest.json to be present in the target directory.
         """
         artifact_path = os.path.join(
-            self.dbt_config.project_root, self.dbt_config.target_path, "manifest.json"
+            self.config.project_root, self.config.target_path, "manifest.json"
         )
-        self.dbt_project.write(artifact_path)
+        self.manifest.write(artifact_path)
 
     def clear_internal_caches(self) -> None:
         """Clear least recently used caches and reinstantiable container objects."""
@@ -375,11 +440,11 @@ class DbtProject:
     def get_ref_node(self, target_model_name: str) -> "MaybeNonSource":
         """Get a `ManifestNode` from a dbt project model name
         as one would in a {{ ref(...) }} macro call."""
-        return self.dbt_project.resolve_ref(
+        return self.manifest.resolve_ref(
             target_model_name=target_model_name,
             target_model_package=None,
-            current_project=self.dbt_config.project_name,
-            node_package=self.dbt_config.project_name,
+            current_project=self.config.project_name,
+            node_package=self.config.project_name,
         )
 
     @lru_cache(maxsize=10)
@@ -388,11 +453,11 @@ class DbtProject:
     ) -> "MaybeParsedSource":
         """Get a `ManifestNode` from a dbt project source name and table name
         as one would in a {{ source(...) }} macro call."""
-        return self.dbt_project.resolve_source(
+        return self.manifest.resolve_source(
             target_source_name=target_source_name,
             target_table_name=target_table_name,
-            current_project=self.dbt_config.project_name,
-            node_package=self.dbt_config.project_name,
+            current_project=self.config.project_name,
+            node_package=self.config.project_name,
         )
 
     @lru_cache(maxsize=10)
@@ -400,7 +465,7 @@ class DbtProject:
         """Find an existing node given relative file path. TODO: We can include
         Path obj support and make this more robust.
         """
-        for node in self.dbt_project.nodes.values():
+        for node in self.manifest.nodes.values():
             if node.original_file_path == path:
                 return node
         return None
@@ -415,7 +480,7 @@ class DbtProject:
         with self.manifest_mutation_mutex:
             self._clear_node(node_name)
             sql_node = self.sql_parser.parse_remote(sql, node_name)
-            process_node(self.dbt_config, self.dbt_project, sql_node)
+            process_node(self.config, self.manifest, sql_node)
             yield sql_node
             self._clear_node(node_name)
 
@@ -428,7 +493,7 @@ class DbtProject:
         """
         self._clear_node(node_name)
         sql_node = self.sql_parser.parse_remote(sql, node_name)
-        process_node(self.dbt_config, self.dbt_project, sql_node)
+        process_node(self.config, self.manifest, sql_node)
         return sql_node
 
     def inject_macro(self, macro_contents: str) -> None:
@@ -437,7 +502,7 @@ class DbtProject:
         macro_overrides = {}
         for node in self.macro_parser.parse_remote(macro_contents):
             macro_overrides[node.unique_id] = node
-        self.dbt_project.macros.update(macro_overrides)
+        self.manifest.macros.update(macro_overrides)
 
     @lru_cache(maxsize=100)
     def get_macro_function(self, macro_name: str) -> Callable[[Dict[str, Any]], Any]:
@@ -448,7 +513,7 @@ class DbtProject:
         make_schema_fn(name="test_schema_2")"""
 
         def _macro_fn(**kwargs):
-            return self.adapter.execute_macro(macro_name, self.dbt_project, **kwargs)
+            return self.adapter.execute_macro(macro_name, self.manifest, **kwargs)
 
         return _macro_fn
 
@@ -532,8 +597,9 @@ class DbtProject:
         by the caller into a mock node before being passed into this method. Existing nodes can
         be passed in here directly.
         """
-        self.sql_compiler.node = node
-        compiled_node = self.sql_compiler.compile(self.dbt_project)
+        compiled_node = SqlCompileRunner(
+            self.config, self.adapter, node=node, node_index=1, num_nodes=1
+        ).compile(self.manifest)
         return DbtAdapterCompilationResult(
             getattr(compiled_node, RAW_CODE),
             getattr(compiled_node, COMPILED_CODE),
@@ -542,7 +608,7 @@ class DbtProject:
 
     def _clear_node(self, name: str = "anonymous_node") -> None:
         """Clears remote node from dbt project."""
-        self.dbt_project.nodes.pop(
+        self.manifest.nodes.pop(
             f"{NodeType.SqlOperation}.{self.project_name}.{name}", None
         )
 
@@ -568,7 +634,7 @@ class DbtProject:
 
     def create_relation_from_node(self, node: "ManifestNode") -> "BaseRelation":
         """Wrapper for `adapter.Relation.create_from`."""
-        return self.adapter.Relation.create_from(self.dbt_config, node)
+        return self.adapter.Relation.create_from(self.config, node)
 
     def get_columns_in_node(self, node: "ManifestNode") -> List[str]:
         """Wrapper for `adapter.get_columns_in_relation`."""
@@ -633,17 +699,6 @@ class DbtProject:
         )
 
     @property
-    def sql_compiler(self) -> SqlCompileRunner:
-        """This is a dbt-core SQL compiler capable of compiling nodes. It requires a node to be set on the
-        instance prior to  calling `compile`. We have higher level methods that handle this for you.
-        """
-        if self._sql_compiler is None:
-            self._sql_compiler = SqlCompileRunner(
-                self.dbt_config, self.adapter, node=None, node_index=1, num_nodes=1
-            )
-        return self._sql_compiler
-
-    @property
     def sql_parser(self) -> SqlBlockParser:
         """A dbt-core SQL parser capable of parsing and adding nodes to the manifest via `parse_remote` which will
         also return the added node to the caller. Note that post-parsing this still typically requires calls to
@@ -651,9 +706,7 @@ class DbtProject:
         We have higher level methods that handle this for you.
         """
         if self._sql_parser is None:
-            self._sql_parser = SqlBlockParser(
-                self.dbt_config, self.dbt_project, self.dbt_config
-            )
+            self._sql_parser = SqlBlockParser(self.config, self.manifest, self.config)
         return self._sql_parser
 
     @property
@@ -661,17 +714,134 @@ class DbtProject:
         """A dbt-core macro parser. Parse macros with `parse_remote` and add them to the manifest. We have a higher
         level method `inject_macro` that handles this for you."""
         if self._macro_parser is None:
-            self._macro_parser = SqlMacroParser(self.dbt_config, self.dbt_project)
+            self._macro_parser = SqlMacroParser(self.config, self.manifest)
         return self._macro_parser
 
-    def get_task(
-        self, typ: str, args: ...
-    ) -> Union[
-        RunTask, ListTask, SeedTask, TestTask, BuildTask, SnapshotTask, RunOperationTask
-    ]:
-        """Get a dbt-core task by type."""
-        return create_task(typ, self.dbt_project, self.dbt_config)
+    def get_task_cls(self, typ: DbtCommand) -> Type["GraphRunnableTask"]:
+        """Get a dbt-core task class by type.
+        This could be overridden to add custom tasks such as linting, etc.
+        so long as they are subclasses of `GraphRunnableTask`."""
 
-    def run(self):
-        """Run the dbt project."""
-        return self.get_task("run", {}).execute_with_hooks
+        # These are purposefully deferred imports
+        from dbt.task.build import BuildTask
+        from dbt.task.list import ListTask
+        from dbt.task.run import RunTask
+        from dbt.task.run_operation import RunOperationTask
+        from dbt.task.seed import SeedTask
+        from dbt.task.snapshot import SnapshotTask
+        from dbt.task.test import TestTask
+
+        return {
+            DbtCommand.RUN: RunTask,
+            DbtCommand.BUILD: BuildTask,
+            DbtCommand.TEST: TestTask,
+            DbtCommand.SEED: SeedTask,
+            DbtCommand.LIST: ListTask,
+            DbtCommand.SNAPSHOT: SnapshotTask,
+            DbtCommand.RUN_OPERATION: RunOperationTask,
+        }[typ]
+
+    def get_task(self, typ: str, args: DbtTaskConfiguration) -> "GraphRunnableTask":
+        """Get a dbt-core task by type."""
+        task = self.get_task_cls(typ)(args, self.config)
+        # Render this a no-op on this class instance so that the tasks `run`
+        # method plumbing will defer to our existing in memory manifest.
+        task.load_manifest = lambda *args, **kwargs: None  # type: ignore
+        task.manifest = self.manifest
+        return task
+
+    def list(
+        self,
+        select: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        threads: int = 1,
+        **kwargs,
+    ):
+        """List resources in the dbt project."""
+        select, exclude = marshall_selection_args(select, exclude)
+        with redirect_stdout(None):
+            return self.get_task(
+                DbtCommand.LIST,
+                DbtTaskConfiguration.with_config(
+                    self.config,
+                    select=select,
+                    exclude=exclude,
+                    threads=threads or self.config.threads,
+                    **kwargs,
+                ),
+            ).run()
+
+    def run(
+        self,
+        select: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        threads: int = 1,
+        **kwargs,
+    ):
+        """Run models in the dbt project."""
+        select, exclude = marshall_selection_args(select, exclude)
+        return self.get_task(
+            DbtCommand.RUN,
+            DbtTaskConfiguration.with_config(
+                self.config,
+                select=select,
+                exclude=exclude,
+                threads=threads or self.config.threads,
+                **kwargs,
+            ),
+        ).run()
+
+    def test(
+        self,
+        select: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        threads: int = 1,
+        **kwargs,
+    ):
+        """Test models in the dbt project."""
+        select, exclude = marshall_selection_args(select, exclude)
+        return self.get_task(
+            DbtCommand.TEST,
+            DbtTaskConfiguration.with_config(
+                self.config,
+                select=select,
+                exclude=exclude,
+                threads=threads or self.config.threads,
+                **kwargs,
+            ),
+        ).run()
+
+    def build(
+        self,
+        select: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+        threads: int = 1,
+        **kwargs,
+    ):
+        """Build resources in the dbt project."""
+        select, exclude = marshall_selection_args(select, exclude)
+        return self.get_task(
+            DbtCommand.BUILD,
+            DbtTaskConfiguration.with_config(
+                self.config,
+                select=select,
+                exclude=exclude,
+                threads=threads or self.config.threads,
+                **kwargs,
+            ),
+        ).run()
+
+
+def marshall_selection_args(select, exclude):
+    """Marshall selection arguments to a list of strings."""
+    if select is None:
+        select = []
+    if exclude is None:
+        exclude = []
+    # Permit standalone strings such as "my_model+ @some_other_model"
+    # as well as lists of strings such as ["my_model+", "@some_other_model"]
+    if not isinstance(select, Iterable):
+        select = [select]
+    if not isinstance(exclude, Iterable):
+        exclude = [exclude]
+    return select, exclude
