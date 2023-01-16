@@ -45,7 +45,8 @@ def activate_virtualenv_in_precommit_hooks(session: Session) -> None:
     that environment when invoked from git.
 
     Args:
-        session: The Session object.
+    ----
+    session: The Session object.
     """
     assert session.bin is not None  # noqa: S101
 

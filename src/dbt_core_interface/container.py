@@ -1,17 +1,20 @@
+"""Provides an interface to manage multiple dbt projects in memory at the same time."""
 import os
 from collections import OrderedDict
-from functools import lru_cache
 from typing import Dict, List, Optional
 
 from dbt_core_interface.project import DbtConfiguration, DbtProject
 
 
 class DbtProjectContainer:
-    """This class manages multiple DbtProjects which each correspond
-    to a single dbt project on disk. It is used to manage multiple
-    dbt projects in a single process. It enables basic multitenant servers."""
+    """Manages multiple DbtProjects.
+
+    A DbtProject corresponds to a single project. This interface is used
+    dbt projects in a single process. It enables basic multitenant servers.
+    """
 
     def __init__(self) -> None:
+        """Initialize the container."""
         self._projects: Dict[str, DbtProject] = OrderedDict()
         self._default_project: Optional[str] = None
 
@@ -19,7 +22,6 @@ class DbtProjectContainer:
         """Primary interface to get a project and execute code."""
         return self._projects.get(project_name)
 
-    @lru_cache(maxsize=10)
     def get_project_by_root_dir(self, root_dir: str) -> Optional[DbtProject]:
         """Get a project by its root directory."""
         root_dir = os.path.abspath(os.path.normpath(root_dir))
@@ -29,8 +31,7 @@ class DbtProjectContainer:
         return None
 
     def get_default_project(self) -> Optional[DbtProject]:
-        """Gets the default project which at any given time is the
-        earliest project inserted into the container."""
+        """Gets the default project which at any given time is the earliest project inserted into the container."""
         return self._projects.get(self._default_project)
 
     def add_project(
@@ -92,27 +93,27 @@ class DbtProjectContainer:
         return list(self._projects.keys())
 
     def __len__(self):
-        """Allows len(DbtProjectContainer)"""
+        """Allows len(DbtProjectContainer)."""
         return len(self._projects)
 
     def __getitem__(self, project: str):
-        """Allows DbtProjectContainer['jaffle_shop']"""
+        """Allows DbtProjectContainer['jaffle_shop']."""
         maybe_project = self.get_project(project)
         if maybe_project is None:
             raise KeyError(project)
         return maybe_project
 
     def __delitem__(self, project: str):
-        """Allows del DbtProjectContainer['jaffle_shop']"""
+        """Allows del DbtProjectContainer['jaffle_shop']."""
         self.drop_project(project)
 
     def __iter__(self):
-        """Allows project for project in DbtProjectContainer"""
+        """Allows project for project in DbtProjectContainer."""
         for project in self._projects:
             yield self.get_project(project)
 
     def __contains__(self, project):
-        """Allows 'jaffle_shop' in DbtProjectContainer"""
+        """Allows 'jaffle_shop' in DbtProjectContainer."""
         return project in self._projects
 
     def __repr__(self):

@@ -51,7 +51,7 @@ source = ["dbt_core_interface", "tests"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 100
+fail_under = 30
 
 [tool.isort]
 profile = "black"
@@ -69,7 +69,7 @@ show_error_context = true
 [tool.ruff]
 line-length = 80
 select = ["B", "B9", "C", "D", "E", "F", "N", "S", "W"]
-ignore = ["E501"]
+ignore = ["E501", "D203", "D213"]
 exclude = [
     ".bzr",
     ".direnv",

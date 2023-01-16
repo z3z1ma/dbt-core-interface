@@ -1,9 +1,13 @@
 """Test cases for the project module."""
-import pytest
 
 
 def test_import_succeeds() -> None:
-    """It exits with a status code of zero."""
+    """A simple test to ensure that the project module can be imported.
+
+    This implicitly garuantees both that none of the surface area of dbt-core
+    imports have changed and that our import side-effects are succeeding.
+    It exits with a status code of zero.
+    """
     from dbt_core_interface import project
 
     _ = project
