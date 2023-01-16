@@ -146,7 +146,7 @@ jobs:
 
       - name: Create coverage report
         run: |
-          nox --session=coverage -- xml
+          nox --python=3.10 --session=coverage -- xml
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v3.1.0
