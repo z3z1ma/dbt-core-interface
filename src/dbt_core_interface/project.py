@@ -16,13 +16,13 @@ from typing import (
     Callable,
     Dict,
     Generator,
-    Iterable,
     List,
     Optional,
     Tuple,
     Type,
     TypeVar,
     Union,
+    cast,
 )
 
 import dbt.adapters.factory
@@ -43,17 +43,17 @@ from dbt_core_interface.utils import has_jinja
 
 if TYPE_CHECKING:
     # These imports are only used for type checking
-    from agate import Table
-    from dbt.adapters.base import BaseRelation
-    from dbt.adapters.factory import Adapter
+    from agate import Table  # type: ignore  # No stubs for agate
+    from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
     from dbt.contracts.connection import AdapterResponse
-    from dbt.contracts.graph.manifest import (
+    from dbt.contracts.graph.manifest import (  # type: ignore
         ManifestNode,
         MaybeNonSource,
         MaybeParsedSource,
     )
     from dbt.contracts.graph.parsed import ColumnInfo
-    from dbt.task.runnable import GraphRunnableTask
+    from dbt.contracts.results import ExecutionResult, RunExecutionResult
+    from dbt.task.runnable import ManifestTask
 
 # We do this early before any dbt imports to disable tracking
 # since dbt-core-interface is not a user-facing tool
@@ -78,7 +78,7 @@ if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5
 
 
 # See ... for more info on this monkey patch
-dbt.adapters.factory.get_adapter = lambda config: config.adapter
+dbt.adapters.factory.get_adapter = lambda config: config.adapter  # type: ignore
 
 
 __all__ = [
@@ -90,6 +90,7 @@ __all__ = [
     "__dbt_major_version__",
     "__dbt_minor_version__",
     "__dbt_patch_version__",
+    "DEFAULT_PROFILES_DIR",
 ]
 
 T = TypeVar("T")
@@ -122,7 +123,7 @@ class DbtConfiguration:
     # A required attribute for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Post init hook to set single_threaded and remove target if not provided."""
         if self.target is None:
             del self.target
@@ -134,29 +135,29 @@ class DbtConfiguration:
         return self._vars
 
     @vars.setter
-    def vars(self, v: Union[str, dict]) -> None:
+    def vars(self, v: Union[str, Dict[str, Any]]) -> None:
         """Set the vars attribute as a string or dict, if dict then it will be converted to a string which is what dbt expects."""
         if isinstance(v, dict):
             v = json.dumps(v)
         self._vars = v
 
 
-class DbtManifestProxy(UserDict):
+class DbtManifestProxy(UserDict[str, Any]):
     """Proxy for manifest dictionary object.
 
     If we need mutation then we should create a copy of the dict or interface with the dbt-core manifest object instead.
     """
 
-    def _readonly(self, *args, **kwargs):
+    def _readonly(self, *args: Any, **kwargs: Any) -> None:
         raise RuntimeError("Cannot modify DbtManifestProxy")
 
     __setitem__ = _readonly
     __delitem__ = _readonly
-    pop = _readonly
-    popitem = _readonly
+    pop = _readonly  # type: ignore
+    popitem = _readonly  # type: ignore
     clear = _readonly
-    update = _readonly
-    setdefault = _readonly
+    update = _readonly  # type: ignore
+    setdefault = _readonly  # type: ignore
 
 
 @dataclass
@@ -185,7 +186,7 @@ class DbtTaskConfiguration:
     Users should enforce an interface for their tasks via a factory method that returns an instance of this class.
     """
 
-    def __init__(self, profile: str, target: str, **kwargs):
+    def __init__(self, profile: str, target: str, **kwargs: Any) -> None:
         """Initialize the task configuration."""
         self.profile: str = profile
         self.target: str = target
@@ -215,7 +216,9 @@ class DbtTaskConfiguration:
         self.quiet: bool = kwargs.get("quiet", True)
 
     @classmethod
-    def with_config(cls, config: RuntimeConfig, **kwargs):
+    def from_runtime_config(
+        cls, config: RuntimeConfig, **kwargs: Any
+    ) -> "DbtTaskConfiguration":
         """Create a task configuration container from a DbtProject's runtime config.
 
         This is a good example of where static typing is not necessary. Developers can just
@@ -245,17 +248,17 @@ class DbtProject:
     def __init__(
         self,
         target: Optional[str] = None,
-        profiles_dir: Optional[str] = None,
+        profiles_dir: str = DEFAULT_PROFILES_DIR,
         project_dir: Optional[str] = None,
-        threads: Optional[int] = 1,
-        vars: Optional[str] = "{}",
+        threads: int = 1,
+        vars: str = "{}",
     ) -> None:
         """Initialize the DbtProject."""
         self.base_config = DbtConfiguration(
             threads=threads,
             target=target,
             profiles_dir=profiles_dir,
-            project_dir=project_dir,
+            project_dir=project_dir or os.getcwd(),
         )
         self.base_config.vars = vars
 
@@ -281,11 +284,11 @@ class DbtProject:
             threads=config.threads,
         )
 
-    def get_adapter_cls(self) -> "Adapter":
+    def get_adapter_cls(self) -> "BaseAdapter":
         """Get the adapter class associated with the dbt profile."""
         return get_adapter_class_by_name(self.config.credentials.type)
 
-    def initialize_adapter(self):
+    def initialize_adapter(self) -> None:
         """Initialize a dbt adapter."""
         if hasattr(self, "_adapter"):
             # Clean up any existing connections, err on the side of runtime
@@ -301,7 +304,7 @@ class DbtProject:
         self.adapter = self.get_adapter_cls()(self.config)
 
     @property
-    def adapter(self):
+    def adapter(self) -> "BaseAdapter":
         """dbt-core adapter with TTL and automatic reinstantiation.
 
         This supports long running processes that may have their connection to the database terminated by
@@ -312,7 +315,7 @@ class DbtProject:
         return self._adapter
 
     @adapter.setter
-    def adapter(self, adapter: "Adapter"):
+    def adapter(self, adapter: "BaseAdapter") -> None:
         """Verify connection and reset TTL on adapter set, update adapter prop ref on config."""
         # Ensure safe concurrent access to the adapter
         # Currently we choose to drop attempted mutations while an existing mutation is in progress
@@ -322,7 +325,7 @@ class DbtProject:
                 self._adapter = adapter
                 self._adapter.connections.set_connection_name()
                 self._adapter_created_at = time.time()
-                self.config.adapter = self.adapter
+                self.config.adapter = self.adapter  # type: ignore
             finally:
                 self.adapter_mutex.release()
 
@@ -367,7 +370,7 @@ class DbtProject:
             raise parse_error
         self.write_manifest_artifact()
 
-    def _verify_connection(self, adapter: "Adapter") -> "Adapter":
+    def _verify_connection(self, adapter: "BaseAdapter") -> "BaseAdapter":
         """Verification for adapter + profile. Used as a passthrough, this also seeds the master connection."""
         try:
             adapter.connections.set_connection_name()
@@ -390,7 +393,7 @@ class DbtProject:
         return True
 
     def fn_threaded_conn(
-        self, fn: Callable[..., T], *args, **kwargs
+        self, fn: Callable[..., T], *args: Any, **kwargs: Any
     ) -> Callable[..., T]:
         """Used for jobs which are intended to be submitted to a thread pool."""
 
@@ -401,7 +404,7 @@ class DbtProject:
 
         return _with_conn
 
-    def generate_runtime_model_context(self, node: "ManifestNode"):
+    def generate_runtime_model_context(self, node: "ManifestNode") -> Dict[str, Any]:
         """Wraps dbt context provider."""
         # Purposefully deferred due to its many dependencies
         from dbt.context.providers import generate_runtime_model_context
@@ -436,31 +439,33 @@ class DbtProject:
 
     def clear_internal_caches(self) -> None:
         """Clear least recently used caches and reinstantiable container objects."""
-        self.get_ref_node.cache_clear()
-        self.get_source_node.cache_clear()
-        self.get_macro_function.cache_clear()
-        self.get_node_by_path.cache_clear()
-        self.get_columns.cache_clear()
         self.compile_code.cache_clear()
+        self.unsafe_compile_code.cache_clear()
 
     def get_ref_node(self, target_model_name: str) -> "MaybeNonSource":
         """Get a `ManifestNode` from a dbt project model name as one would in a {{ ref(...) }} macro call."""
-        return self.manifest.resolve_ref(
-            target_model_name=target_model_name,
-            target_model_package=None,
-            current_project=self.config.project_name,
-            node_package=self.config.project_name,
+        return cast(
+            "MaybeNonSource",
+            self.manifest.resolve_ref(
+                target_model_name=target_model_name,
+                target_model_package=None,
+                current_project=self.config.project_name,
+                node_package=self.config.project_name,
+            ),
         )
 
     def get_source_node(
         self, target_source_name: str, target_table_name: str
     ) -> "MaybeParsedSource":
         """Get a `ManifestNode` from a dbt project source name and table name as one would in a {{ source(...) }} macro call."""
-        return self.manifest.resolve_source(
-            target_source_name=target_source_name,
-            target_table_name=target_table_name,
-            current_project=self.config.project_name,
-            node_package=self.config.project_name,
+        return cast(
+            "MaybeParsedSource",
+            self.manifest.resolve_source(
+                target_source_name=target_source_name,
+                target_table_name=target_table_name,
+                current_project=self.config.project_name,
+                node_package=self.config.project_name,
+            ),
         )
 
     def get_node_by_path(self, path: str) -> Optional["ManifestNode"]:
@@ -509,15 +514,15 @@ class DbtProject:
             macro_overrides[node.unique_id] = node
         self.manifest.macros.update(macro_overrides)
 
-    def get_macro_function(self, macro_name: str) -> Callable[[Dict[str, Any]], Any]:
+    def get_macro_function(self, macro_name: str) -> Callable[..., Any]:
         """Get macro as a function which behaves like a Python function."""
 
-        def _macro_fn(**kwargs):
+        def _macro_fn(**kwargs: Any) -> Any:
             return self.adapter.execute_macro(macro_name, self.manifest, **kwargs)
 
         return _macro_fn
 
-    def execute_macro(self, macro: str, **kwargs) -> Any:
+    def execute_macro(self, macro: str, **kwargs: Any) -> Any:
         """Wraps adapter execute_macro. Execute a macro like a python function."""
         return self.get_macro_function(macro)(**kwargs)
 
@@ -528,7 +533,10 @@ class DbtProject:
 
         This is more on-the-rails than `execute_code` which intelligently handles jinja compilation provides a proxy result.
         """
-        return self.adapter.execute(sql, auto_begin, fetch)
+        return cast(
+            Tuple["AdapterResponse", "Table"],
+            self.adapter.execute(sql, auto_begin, fetch),
+        )
 
     def execute_code(self, raw_code: str) -> DbtAdapterExecutionResult:
         """Execute dbt SQL statement against database.
@@ -640,13 +648,14 @@ class DbtProject:
         """Wrapper for `adapter.Relation.create_from`."""
         return self.adapter.Relation.create_from(self.config, node)
 
-    def get_columns_in_node(self, node: "ManifestNode") -> List[str]:
+    def get_columns_in_node(self, node: "ManifestNode") -> List["ColumnInfo"]:
         """Wrapper for `adapter.get_columns_in_relation`."""
-        return self.adapter.get_columns_in_relation(
-            self.create_relation_from_node(node)
+        return cast(
+            List["ColumnInfo"],
+            self.adapter.get_columns_in_relation(self.create_relation_from_node(node)),
         )
 
-    def get_columns(self, node: "ManifestNode") -> List["ColumnInfo"]:
+    def get_columns(self, node: "ManifestNode") -> List[str]:
         """Get a list of columns from a compiled node. TODO: This is not fully baked. The API is stable but the implementation is not."""
         columns = []
         try:
@@ -672,9 +681,9 @@ class DbtProject:
             else (self.create_relation(database, schema, name), False)
         )
 
-    def create_schema(self, node: "ManifestNode"):
+    def create_schema(self, node: "ManifestNode") -> None:
         """Create a schema in the database leveraging dbt-core's builtin macro."""
-        return self.execute_macro(
+        self.execute_macro(
             "create_schema",
             kwargs={"relation": self.create_relation_from_node(node)},
         )
@@ -718,7 +727,7 @@ class DbtProject:
             self._macro_parser = SqlMacroParser(self.config, self.manifest)
         return self._macro_parser
 
-    def get_task_cls(self, typ: DbtCommand) -> Type["GraphRunnableTask"]:
+    def get_task_cls(self, typ: DbtCommand) -> Type["ManifestTask"]:
         """Get a dbt-core task class by type.
 
         This could be overridden to add custom tasks such as linting, etc.
@@ -743,7 +752,7 @@ class DbtProject:
             DbtCommand.RUN_OPERATION: RunOperationTask,
         }[typ]
 
-    def get_task(self, typ: str, args: DbtTaskConfiguration) -> "GraphRunnableTask":
+    def get_task(self, typ: DbtCommand, args: DbtTaskConfiguration) -> "ManifestTask":
         """Get a dbt-core task by type."""
         task = self.get_task_cls(typ)(args, self.config)
         # Render this a no-op on this class instance so that the tasks `run`
@@ -754,17 +763,17 @@ class DbtProject:
 
     def list(
         self,
-        select: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
+        select: Optional[Union[str, List[str]]] = None,
+        exclude: Optional[Union[str, List[str]]] = None,
         threads: int = 1,
-        **kwargs,
-    ):
+        **kwargs: Dict[str, Any],
+    ) -> "ExecutionResult":
         """List resources in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
         with redirect_stdout(None):
-            return self.get_task(
+            return self.get_task(  # type: ignore
                 DbtCommand.LIST,
-                DbtTaskConfiguration.with_config(
+                DbtTaskConfiguration.from_runtime_config(
                     self.config,
                     select=select,
                     exclude=exclude,
@@ -775,36 +784,39 @@ class DbtProject:
 
     def run(
         self,
-        select: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
+        select: Optional[Union[str, List[str]]] = None,
+        exclude: Optional[Union[str, List[str]]] = None,
         threads: int = 1,
-        **kwargs,
-    ):
+        **kwargs: Dict[str, Any],
+    ) -> "RunExecutionResult":
         """Run models in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return self.get_task(
-            DbtCommand.RUN,
-            DbtTaskConfiguration.with_config(
-                self.config,
-                select=select,
-                exclude=exclude,
-                threads=threads or self.config.threads,
-                **kwargs,
-            ),
-        ).run()
+        return cast(
+            "RunExecutionResult",
+            self.get_task(
+                DbtCommand.RUN,
+                DbtTaskConfiguration.from_runtime_config(
+                    self.config,
+                    select=select,
+                    exclude=exclude,
+                    threads=threads or self.config.threads,
+                    **kwargs,
+                ),
+            ).run(),
+        )
 
     def test(
         self,
-        select: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
+        select: Optional[Union[str, List[str]]] = None,
+        exclude: Optional[Union[str, List[str]]] = None,
         threads: int = 1,
-        **kwargs,
-    ):
+        **kwargs: Dict[str, Any],
+    ) -> "ExecutionResult":
         """Test models in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return self.get_task(
+        return self.get_task(  # type: ignore
             DbtCommand.TEST,
-            DbtTaskConfiguration.with_config(
+            DbtTaskConfiguration.from_runtime_config(
                 self.config,
                 select=select,
                 exclude=exclude,
@@ -815,16 +827,16 @@ class DbtProject:
 
     def build(
         self,
-        select: Optional[List[str]] = None,
-        exclude: Optional[List[str]] = None,
+        select: Optional[Union[str, List[str]]] = None,
+        exclude: Optional[Union[str, List[str]]] = None,
         threads: int = 1,
-        **kwargs,
-    ):
+        **kwargs: Dict[str, Any],
+    ) -> "ExecutionResult":
         """Build resources in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return self.get_task(
+        return self.get_task(  # type: ignore
             DbtCommand.BUILD,
-            DbtTaskConfiguration.with_config(
+            DbtTaskConfiguration.from_runtime_config(
                 self.config,
                 select=select,
                 exclude=exclude,
@@ -834,7 +846,10 @@ class DbtProject:
         ).run()
 
 
-def marshall_selection_args(select, exclude):
+def marshall_selection_args(
+    select: Optional[Union[str, List[str]]] = None,
+    exclude: Optional[Union[str, List[str], None]] = None,
+) -> Tuple[Union[str, List[str]], Union[str, List[str]]]:
     """Marshall selection arguments to a list of strings."""
     if select is None:
         select = []
@@ -842,8 +857,8 @@ def marshall_selection_args(select, exclude):
         exclude = []
     # Permit standalone strings such as "my_model+ @some_other_model"
     # as well as lists of strings such as ["my_model+", "@some_other_model"]
-    if not isinstance(select, Iterable):
+    if not isinstance(select, List):
         select = [select]
-    if not isinstance(exclude, Iterable):
+    if not isinstance(exclude, List):
         exclude = [exclude]
     return select, exclude

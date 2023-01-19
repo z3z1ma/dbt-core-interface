@@ -16,4 +16,4 @@ def has_jinja(query: str) -> bool:
 
 def semvar_to_tuple(semvar: "VersionSpecifier") -> Tuple[int, int, int]:
     """Convert a semvar to a tuple of ints."""
-    return (int(semvar.major) or 0, int(semvar.minor) or 0, int(semvar.patch) or 0)
+    return (int(semvar.major or 0), int(semvar.minor or 0), int(semvar.patch or 0))

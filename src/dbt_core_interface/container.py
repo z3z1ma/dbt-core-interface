@@ -1,9 +1,13 @@
 """Provides an interface to manage multiple dbt projects in memory at the same time."""
 import os
 from collections import OrderedDict
-from typing import Dict, List, Optional
+from typing import Dict, Generator, List, Optional
 
-from dbt_core_interface.project import DbtConfiguration, DbtProject
+from dbt_core_interface.project import (
+    DEFAULT_PROFILES_DIR,
+    DbtConfiguration,
+    DbtProject,
+)
 
 
 class DbtProjectContainer:
@@ -32,20 +36,23 @@ class DbtProjectContainer:
 
     def get_default_project(self) -> Optional[DbtProject]:
         """Gets the default project which at any given time is the earliest project inserted into the container."""
-        return self._projects.get(self._default_project)
+        default_project = self._default_project
+        if not default_project:
+            return None
+        return self._projects.get(default_project)
 
     def add_project(
         self,
         target: Optional[str] = None,
-        profiles_dir: Optional[str] = None,
+        profiles_dir: str = DEFAULT_PROFILES_DIR,
         project_dir: Optional[str] = None,
-        threads: Optional[int] = 1,
-        vars: Optional[str] = "{}",
-        name_override: Optional[str] = "",
+        threads: int = 1,
+        vars: str = "{}",
+        name_override: str = "",
     ) -> DbtProject:
         """Add a DbtProject with arguments."""
         project = DbtProject(target, profiles_dir, project_dir, threads, vars)
-        project_name = name_override or project.dbt_config.project_name
+        project_name = name_override or project.config.project_name
         if self._default_project is None:
             self._default_project = project_name
         self._projects[project_name] = project
@@ -53,13 +60,13 @@ class DbtProjectContainer:
 
     def add_parsed_project(self, project: DbtProject) -> DbtProject:
         """Add an already instantiated DbtProject."""
-        self._projects.setdefault(project.dbt_config.project_name, project)
+        self._projects.setdefault(project.config.project_name, project)
         return project
 
     def add_project_from_args(self, config: DbtConfiguration) -> DbtProject:
         """Add a DbtProject from a DbtConfiguration."""
         project = DbtProject.from_config(config)
-        self._projects.setdefault(project.dbt_config.project_name, project)
+        self._projects.setdefault(project.config.project_name, project)
         return project
 
     def drop_project(self, project_name: str) -> None:
@@ -73,7 +80,7 @@ class DbtProjectContainer:
         self._projects.pop(project_name)
         if self._default_project == project_name:
             if len(self) > 0:
-                self._default_project = self._projects.keys()[0]
+                self._default_project = list(self._projects.keys())[0]
             else:
                 self._default_project = None
 
@@ -92,31 +99,34 @@ class DbtProjectContainer:
         """Convenience to grab all registered project names."""
         return list(self._projects.keys())
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Allows len(DbtProjectContainer)."""
         return len(self._projects)
 
-    def __getitem__(self, project: str):
+    def __getitem__(self, project: str) -> DbtProject:
         """Allows DbtProjectContainer['jaffle_shop']."""
         maybe_project = self.get_project(project)
         if maybe_project is None:
             raise KeyError(project)
         return maybe_project
 
-    def __delitem__(self, project: str):
+    def __delitem__(self, project: str) -> None:
         """Allows del DbtProjectContainer['jaffle_shop']."""
         self.drop_project(project)
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[DbtProject, None, None]:
         """Allows project for project in DbtProjectContainer."""
         for project in self._projects:
-            yield self.get_project(project)
+            maybe_project = self.get_project(project)
+            if maybe_project is None:
+                continue
+            yield maybe_project
 
-    def __contains__(self, project):
+    def __contains__(self, project: str) -> bool:
         """Allows 'jaffle_shop' in DbtProjectContainer."""
         return project in self._projects
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Canonical string representation of DbtProjectContainer instance."""
         return "\n".join(
             f"Project: {project.project_name}, Dir: {project.project_root}"
