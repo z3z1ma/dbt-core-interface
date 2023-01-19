@@ -66,6 +66,7 @@ show_column_numbers = true
 show_error_codes = true
 show_error_context = true
 disallow_untyped_calls = false
+exclude = "noxfile.py"
 
 [tool.ruff]
 line-length = 80

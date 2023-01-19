@@ -1,6 +1,7 @@
 """The interface for interacting with dbt-core."""
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -40,6 +41,11 @@ from dbt.tracking import disable_tracking
 
 from dbt_core_interface.utils import has_jinja
 
+
+if sys.version_info > (3, 8):
+    DictProxy = UserDict[str, Any]
+else:
+    DictProxy = UserDict
 
 if TYPE_CHECKING:
     # These imports are only used for type checking
@@ -142,7 +148,7 @@ class DbtConfiguration:
         self._vars = v
 
 
-class DbtManifestProxy(UserDict[str, Any]):
+class DbtManifestProxy(DictProxy):
     """Proxy for manifest dictionary object.
 
     If we need mutation then we should create a copy of the dict or interface with the dbt-core manifest object instead.
