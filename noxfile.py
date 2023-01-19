@@ -6,12 +6,11 @@ import sys
 from pathlib import Path
 from textwrap import dedent
 
-import nox  # type: ignore
+import nox
 
 
 try:
-    from nox_poetry import Session  # type: ignore
-    from nox_poetry import session  # type: ignore
+    from nox_poetry import Session, session
 except ImportError:
     message = f"""\
     Nox failed to import the 'nox-poetry' package.
@@ -157,7 +156,7 @@ def mypy(session: Session) -> None:
 
 @session(python=python_versions)
 @nox.parametrize("dbt_version", dbt_versions)
-def tests(session: Session, dbt_version) -> None:
+def tests(session: Session, dbt_version: str) -> None:
     """Run the test suite."""
     session.install(".", "coverage[toml]", "pytest", "pygments")
     session.run_always("pip", "install", f"dbt-core=={dbt_version}", external=True)
