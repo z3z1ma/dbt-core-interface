@@ -1,3 +1,4 @@
+# typical python gitignore
 .mypy_cache/
 /.coverage
 /.coverage.*
@@ -9,4 +10,14 @@
 /docs/_build/
 /src/*.egg-info/
 __pycache__/
+/.ruff_cache/
+/.pytest_cache/
+
+# dbt target folder
 /target/
+
+# dbt venvs
+/.venv*
+
+# env files
+.env
