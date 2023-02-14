@@ -1,0 +1,9 @@
+jaffle_shop:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "demo_duckdb/jaffle_shop.duckdb"
+    test:
+      type: duckdb
+      path: "jaffle_shop.duckdb"

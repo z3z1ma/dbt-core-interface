@@ -51,9 +51,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from functools import lru_cache, wraps
 from http.cookies import CookieError, Morsel, SimpleCookie
-
-# getfullargspec was deprecated in 3.5 and un-deprecated in 3.6
-# getargspec was deprecated in 3.0 and removed in 3.11
 from inspect import getfullargspec
 from io import BytesIO
 from json import dumps as json_dumps
@@ -61,7 +58,7 @@ from json import loads as json_lds
 from tempfile import NamedTemporaryFile
 from traceback import format_exc, print_exc
 from types import FunctionType
-from types import ModuleType as new_module
+from types import ModuleType as new_module  # noqa
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -131,7 +128,7 @@ if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5
 
     # I expect a change in dbt 1.5.0 that may make this monkey patch unnecessary
     # but we can reduce the codepath since dbt is **loaded** with telemetry calls...
-    dbt.events.functions.fire_event = lambda e: None
+    dbt.events.functions.fire_event = lambda *args, **kwargs: None
 
 
 def write_manifest_for_partial_parse(self: ManifestLoader):
@@ -175,6 +172,8 @@ T = TypeVar("T")
 JINJA_CONTROL_SEQUENCES = ["{{", "}}", "{%", "%}", "{#", "#}"]
 
 LOGGER = logging.getLogger(__name__)
+
+__version__ = dbt.version.__version__
 
 
 class DbtCommand(str, Enum):
@@ -822,8 +821,12 @@ class DbtProject:
             self._macro_parser = SqlMacroParser(self.config, self.manifest)
         return self._macro_parser
 
-    # TODO: there are still a lot of interesting ways to expose / modify this interface
-    # so I would consider this very WIP
+    def get_task_config(self, **kwargs) -> DbtTaskConfiguration:
+        """Get a dbt-core task configuration."""
+        threads = kwargs.pop("threads", self.config.threads)
+        return DbtTaskConfiguration.from_runtime_config(
+            config=self.config, threads=threads, **kwargs
+        )
 
     def get_task_cls(self, typ: DbtCommand) -> Type["ManifestTask"]:
         """Get a dbt-core task class by type.
@@ -863,7 +866,6 @@ class DbtProject:
         self,
         select: Optional[Union[str, List[str]]] = None,
         exclude: Optional[Union[str, List[str]]] = None,
-        threads: int = 1,
         **kwargs: Dict[str, Any],
     ) -> "ExecutionResult":
         """List resources in the dbt project."""
@@ -871,77 +873,53 @@ class DbtProject:
         with redirect_stdout(None):
             return self.get_task(  # type: ignore
                 DbtCommand.LIST,
-                DbtTaskConfiguration.from_runtime_config(
-                    self.config,
-                    select=select,
-                    exclude=exclude,
-                    threads=threads or self.config.threads,
-                    **kwargs,
-                ),
+                self.get_task_config(select=select, exclude=exclude, **kwargs),
             ).run()
 
     def run(
         self,
         select: Optional[Union[str, List[str]]] = None,
         exclude: Optional[Union[str, List[str]]] = None,
-        threads: int = 1,
         **kwargs: Dict[str, Any],
     ) -> "RunExecutionResult":
         """Run models in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return cast(
-            "RunExecutionResult",
-            self.get_task(
-                DbtCommand.RUN,
-                DbtTaskConfiguration.from_runtime_config(
-                    self.config,
-                    select=select,
-                    exclude=exclude,
-                    threads=threads or self.config.threads,
-                    **kwargs,
-                ),
-            ).run(),
-        )
+        with redirect_stdout(None):
+            return cast(
+                "RunExecutionResult",
+                self.get_task(
+                    DbtCommand.RUN,
+                    self.get_task_config(select=select, exclude=exclude, **kwargs),
+                ).run(),
+            )
 
     def test(
         self,
         select: Optional[Union[str, List[str]]] = None,
         exclude: Optional[Union[str, List[str]]] = None,
-        threads: int = 1,
         **kwargs: Dict[str, Any],
     ) -> "ExecutionResult":
         """Test models in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return self.get_task(  # type: ignore
-            DbtCommand.TEST,
-            DbtTaskConfiguration.from_runtime_config(
-                self.config,
-                select=select,
-                exclude=exclude,
-                threads=threads or self.config.threads,
-                **kwargs,
-            ),
-        ).run()
+        with redirect_stdout(None):
+            return self.get_task(  # type: ignore
+                DbtCommand.TEST,
+                self.get_task_config(select=select, exclude=exclude, **kwargs),
+            ).run()
 
     def build(
         self,
         select: Optional[Union[str, List[str]]] = None,
         exclude: Optional[Union[str, List[str]]] = None,
-        threads: int = 1,
         **kwargs: Dict[str, Any],
     ) -> "ExecutionResult":
         """Build resources in the dbt project."""
         select, exclude = marshall_selection_args(select, exclude)
-        return self.get_task(  # type: ignore
-            DbtCommand.BUILD,
-            DbtTaskConfiguration.from_runtime_config(
-                self.config,
-                select=select,
-                exclude=exclude,
-                threads=threads or self.config.threads,
-                **kwargs,
-            ),
-        ).run()
+        with redirect_stdout(None):
+            return self.get_task(
+                DbtCommand.BUILD,
+                self.get_task_config(select=select, exclude=exclude, **kwargs),
+            ).run()
 
 
 def marshall_selection_args(
@@ -953,11 +931,15 @@ def marshall_selection_args(
         select = []
     if exclude is None:
         exclude = []
+    if isinstance(select, (tuple, set, frozenset)):
+        select = list(select)
+    if isinstance(exclude, (tuple, set, frozenset)):
+        exclude = list(exclude)
     # Permit standalone strings such as "my_model+ @some_other_model"
     # as well as lists of strings such as ["my_model+", "@some_other_model"]
-    if not isinstance(select, List):
+    if not isinstance(select, list):
         select = [select]
-    if not isinstance(exclude, List):
+    if not isinstance(exclude, list):
         exclude = [exclude]
     return select, exclude
 
@@ -1013,6 +995,8 @@ class DbtProjectContainer:
     def add_parsed_project(self, project: DbtProject) -> DbtProject:
         """Add an already instantiated DbtProject."""
         self._projects.setdefault(project.config.project_name, project)
+        if self._default_project is None:
+            self._default_project = project.config.project_name
         return project
 
     def add_project_from_args(self, config: DbtConfiguration) -> DbtProject:
@@ -1062,6 +1046,12 @@ class DbtProjectContainer:
             raise KeyError(project)
         return maybe_project
 
+    def __setitem__(self, name: str, project: DbtProject) -> None:
+        """Allow DbtProjectContainer['jaffle_shop'] = DbtProject."""
+        if self._default_project is None:
+            self._default_project = name
+        self._projects[name] = project
+
     def __delitem__(self, project: str) -> None:
         """Allow del DbtProjectContainer['jaffle_shop']."""
         self.drop_project(project)
@@ -1096,7 +1086,7 @@ def semvar_to_tuple(semvar: "VersionSpecifier") -> Tuple[int, int, int]:
 
 
 # BOTTLE.PY (the region tag lets vscode collapse this, super handy)
-# region
+# region bottle.py
 
 
 def _cli_parse(args):  # pragma: no coverage
@@ -1136,9 +1126,6 @@ def _cli_patch(cli_args):  # pragma: no coverage
 if __name__ == "__main__":
     _cli_patch(sys.argv)
 
-###############################################################################
-# Imports and Python 2/3 unification ##########################################
-###############################################################################
 
 py = sys.version_info
 py3k = py.major > 2
@@ -1276,20 +1263,10 @@ class lazy_attribute(object):
         return value
 
 
-###############################################################################
-# Exceptions and Events #######################################################
-###############################################################################
-
-
 class BottleException(Exception):
     """A base class for exceptions used by bottle."""
 
     pass
-
-
-###############################################################################
-# Routing ######################################################################
-###############################################################################
 
 
 class RouteError(BottleException):
@@ -1637,19 +1614,16 @@ class Route(object):
             0,
             13,
             "Route.get_config() is deprecated.",
-            "The Route.config property already includes values from the"
-            " application config for missing keys. Access it directly.",
+            (
+                "The Route.config property already includes values from the"
+                " application config for missing keys. Access it directly."
+            ),
         )
         return self.config.get(key, default)
 
     def __repr__(self):
         cb = self.get_undecorated_callback()
         return "<%s %s -> %s:%s>" % (self.method, self.rule, cb.__module__, cb.__name__)
-
-
-###############################################################################
-# Application Object ###########################################################
-###############################################################################
 
 
 class Bottle(object):
@@ -1679,8 +1653,10 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(catchall) keyword argument.",
-                "The 'catchall' setting is now part of the app "
-                "configuration. Fix: `app.config['catchall'] = False`",
+                (
+                    "The 'catchall' setting is now part of the app "
+                    "configuration. Fix: `app.config['catchall'] = False`"
+                ),
             )
             self.config["catchall"] = False
         if kwargs.get("autojson") is False:
@@ -1688,8 +1664,10 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(autojson) keyword argument.",
-                "The 'autojson' setting is now part of the app "
-                "configuration. Fix: `app.config['json.enable'] = False`",
+                (
+                    "The 'autojson' setting is now part of the app "
+                    "configuration. Fix: `app.config['json.enable'] = False`"
+                ),
             )
             self.config["json.disable"] = True
 
@@ -1819,8 +1797,10 @@ class Bottle(object):
                 0,
                 13,
                 "Prefix must end in '/'. Falling back to WSGI mount.",
-                "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the parent"
-                " application.",
+                (
+                    "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
+                    " parent application."
+                ),
             )
             return self._mount_wsgi(prefix, app, **options)
 
@@ -2231,11 +2211,6 @@ class Bottle(object):
         if name in self.__dict__:
             raise AttributeError("Attribute %s already defined. Plugin conflict?" % name)
         self.__dict__[name] = value
-
-
-###############################################################################
-# HTTP and WSGI Tools ##########################################################
-###############################################################################
 
 
 class BaseRequest(object):
@@ -3084,11 +3059,6 @@ class HTTPError(HTTPResponse):
         super(HTTPError, self).__init__(body, status, **more_headers)
 
 
-###############################################################################
-# Plugins ######################################################################
-###############################################################################
-
-
 class PluginError(BottleException):
     pass
 
@@ -3215,11 +3185,6 @@ class _ImportRedirect(object):
         setattr(self.module, modname, module)
         module.__loader__ = self
         return module
-
-
-###############################################################################
-# Common Utilities #############################################################
-###############################################################################
 
 
 class MultiDict(DictMixin):
@@ -4094,11 +4059,6 @@ def static_file(
     return HTTPResponse(body, **headers)
 
 
-###############################################################################
-# HTTP Utilities and MISC (TODO) ###############################################
-###############################################################################
-
-
 def debug(mode=True):
     """Change the debug level.
     There is only one debug level supported at the moment."""
@@ -4134,8 +4094,7 @@ def parse_date(ims):
 
 
 def parse_auth(header):
-    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None
-    """
+    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None"""
     try:
         method, data = header.split(None, 1)
         if method.lower() == "basic":
@@ -4342,10 +4301,6 @@ def auth_basic(check, realm="private", text="Access denied"):
     return decorator
 
 
-# Shortcuts for common Bottle methods.
-# They all refer to the current default application.
-
-
 def make_default_app_wrapper(name):
     """Return a callable that relays calls to the current default app."""
 
@@ -4368,14 +4323,6 @@ hook = make_default_app_wrapper("hook")
 install = make_default_app_wrapper("install")
 uninstall = make_default_app_wrapper("uninstall")
 url = make_default_app_wrapper("get_url")
-
-###############################################################################
-# Server Adapter ###############################################################
-###############################################################################
-
-# Before you edit or add a server adapter, please read:
-# - https://github.com/bottlepy/bottle/pull/647#issuecomment-60152870
-# - https://github.com/bottlepy/bottle/pull/865#issuecomment-242795341
 
 
 class ServerAdapter(object):
@@ -4786,10 +4733,6 @@ server_names = {
     "auto": AutoServer,
 }
 
-###############################################################################
-# Application Control ##########################################################
-###############################################################################
-
 
 def load(target, **namespace):
     """Import a module or fetch an object from a module.
@@ -4921,7 +4864,9 @@ def run(
 
         server.quiet = server.quiet or quiet
         if not server.quiet:
-            _stderr("Bottle v%s server starting up (using %s)..." % (__version__, repr(server)))
+            _stderr(
+                "Bottle (dbt v%s) server starting up (using %s)..." % (__version__, repr(server))
+            )
             if server.host.startswith("unix:"):
                 _stderr("Listening on %s" % server.host)
             else:
@@ -4992,11 +4937,6 @@ class FileCheckerThread(threading.Thread):
             self.status = "exit"  # silent exit
         self.join()
         return exc_type is not None and issubclass(exc_type, KeyboardInterrupt)
-
-
-###############################################################################
-# Template Adapters ############################################################
-###############################################################################
 
 
 class TemplateError(BottleException):
@@ -5510,10 +5450,6 @@ mako_view = functools.partial(view, template_adapter=MakoTemplate)
 cheetah_view = functools.partial(view, template_adapter=CheetahTemplate)
 jinja2_view = functools.partial(view, template_adapter=Jinja2Template)
 
-###############################################################################
-# Constants and Globals ########################################################
-###############################################################################
-
 TEMPLATE_PATH = ["./", "./views/"]
 TEMPLATES = {}
 DEBUG = False
@@ -5653,62 +5589,53 @@ def _main(argv):  # pragma: no coverage
 
 
 # endregion
-# END OF BOTTLE.PY
 
 
-CONTAINER_DEFAULT = "__default__"
 SERVER_MUTEX = threading.Lock()
 
 
-def server_json_default(obj):
-    """Default JSON serializer."""
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
-
-
 @dataclass
-class OsmosisRunResult:
-    """The result of running a query with Osmosis."""
+class ServerRunResult:
+    """The result of running a query."""
 
     column_names: List[str]
     rows: List[List[Any]]
-    raw_sql: str
-    compiled_sql: str
+    raw_code: str
+    executed_code: str
 
 
 @dataclass
-class OsmosisCompileResult:
-    """The result of compiling a project with Osmosis."""
+class ServerCompileResult:
+    """The result of compiling a project."""
 
     result: str
 
 
 @dataclass
-class OsmosisResetResult:
-    """The result of resetting the Osmosis database."""
+class ServerResetResult:
+    """The result of resetting the Server database."""
 
     result: str
 
 
 @dataclass
-class OsmosisRegisterResult:
-    """The result of registering a project with Osmosis."""
+class ServerRegisterResult:
+    """The result of registering a project."""
 
     added: str
     projects: List[str]
 
 
 @dataclass
-class OsmosisUnregisterResult:
-    """The result of unregistering a project from Osmosis."""
+class ServerUnregisterResult:
+    """The result of unregistering a project."""
 
     removed: str
     projects: List[str]
 
 
-class OsmosisErrorCode(Enum):
-    """The error codes that can be returned by the Osmosis API."""
+class ServerErrorCode(Enum):
+    """The error codes that can be returned by the Server API."""
 
     FailedToReachServer = -1
     CompileSqlFailure = 1
@@ -5719,42 +5646,94 @@ class OsmosisErrorCode(Enum):
 
 
 @dataclass
-class OsmosisError:
+class ServerError:
     """An error that can be serialized to JSON."""
 
-    code: OsmosisErrorCode
+    code: ServerErrorCode
     message: str
     data: Dict[str, Any]
 
 
 @dataclass
-class OsmosisErrorContainer:
-    """A container for an OsmosisError that can be serialized to JSON."""
+class ServerErrorContainer:
+    """A container for an ServerError that can be serialized to JSON."""
 
-    error: OsmosisError
+    error: ServerError
 
 
-class DbtOsmosisPlugin:
-    """This plugin is used to inject the dbt-osmosis runner into the request context."""
+def server_serializer(o):
+    """Encode JSON. Handles server-specific types."""
+    if isinstance(o, decimal.Decimal):
+        return float(o)
+    if isinstance(o, ServerErrorCode):
+        return o.value
+    return str(o)
 
-    name = "dbt-osmosis"
+
+def remove_comments(string) -> str:  # noqa: C901
+    """Remove comments from a string."""
+    pattern = r"(\".*?\"|\'.*?\')|(/\*.*?\*/|//[^\r\n]*$)"
+    # first group captures quoted strings (double or single)
+    # second group captures comments (//single-line or /* multi-line */)
+    regex = re.compile(pattern, re.MULTILINE | re.DOTALL)
+
+    def _replacer(match):
+        # if the 2nd group (capturing comments) is not None,
+        # it means we have captured a non-quoted (real) comment string.
+        if match.group(2) is not None:
+            return ""  # so we will return empty to remove the comment
+        else:  # otherwise, we will return the 1st group
+            return match.group(1)  # captured quoted-string
+
+    multiline_comments_removed = regex.sub(_replacer, string) + "\n"
+    output = ""
+    for line in multiline_comments_removed.splitlines(keepends=True):
+        if line.strip().startswith("--"):
+            continue
+        s_quote_c = 0
+        d_quote_c = 0
+        cmt_dash = 0
+        split_ix = -1
+        for i, c in enumerate(line):
+            if cmt_dash >= 2:
+                # found 2 sequential dashes, split here
+                split_ix = i - cmt_dash
+                break
+            if c == '"':
+                # inc quote count
+                d_quote_c += 1
+            elif c == "'":
+                # inc quote count
+                s_quote_c += 1
+            elif c == "-" and d_quote_c % 2 == 0 and s_quote_c % 2 == 0:
+                # dash and not in a quote, inc dash count
+                cmt_dash += 1
+                continue
+            # reset dash count each iteration
+            cmt_dash = 0
+        if split_ix > 0:
+            output += line[:split_ix] + "\n"
+        else:
+            output += line
+    return "".join(output)
+
+
+class DbtInterfaceServerPlugin:
+    """Used to inject the dbt-core-interface runner into the request context."""
+
+    name = "dbt-interface-server"
     api = 2
 
     def __init__(self, runner: DbtProject):
         """Initialize the plugin with the runner to inject into the request context."""
-        self.runners: Dict[str, DbtProject] = {
-            CONTAINER_DEFAULT: runner,
-            runner.config.project_name: runner,
-        }
+        self.runners = DbtProjectContainer()
+        self.runners.add_parsed_project(runner)
 
     def apply(self, callback, route):
         """Apply the plugin to the route callback."""
 
         def wrapper(*args, **kwargs):
             start = time.time()
-            # Headers are read-only so we can't inject it, handle it at the route level
-            # if not request.get_header("X-dbt-Project"):
-            #     request.headers["X-dbt-Project"] = self.runners[CONTAINER_DEFAULT].config.project_name
             body = callback(*args, **kwargs, runners=self.runners)
             end = time.time()
             response.headers["X-dbt-Exec-Time"] = str(end - start)
@@ -5764,42 +5743,41 @@ class DbtOsmosisPlugin:
 
 
 @route("/run", method="POST")
-def run_sql(runners: Dict[str, DbtProject]) -> Union[OsmosisRunResult, OsmosisErrorContainer, str]:
+def run_sql(runners: DbtProjectContainer) -> Union[ServerRunResult, ServerErrorContainer, str]:
     """Run SQL against a dbt project."""
     # Project Support
-    project = request.get_header("X-dbt-Project", CONTAINER_DEFAULT)
-    project_runner = runners.get(project)
-    if project != CONTAINER_DEFAULT and not project_runner:
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    if not project_runner:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectNotRegistered,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
                     message=(
                         "Project is not registered. Make a POST request to the /register endpoint"
                         " first to register a runner"
                     ),
-                    data={"registered_projects": runners.keys()},
+                    data={"registered_projects": runners.registered_projects()},
                 )
             )
         )
-    elif not project_runner:
-        project_runner = runners[CONTAINER_DEFAULT]
 
     # Query Construction
-    query = f'\n(\n{{# PAD #}}{request.body.read().decode("utf-8").strip()}{{# PAD #}}\n)\n'
+    query = remove_comments(request.body.read().decode("utf-8"))
     limit = request.query.get("limit", 200)
     query_with_limit = (
         # we need to support `TOP` too
-        f"select * from ({query}) as osmosis_query limit {limit}"
+        f"select * from ({query}) as __server_query limit {limit}"
     )
 
     try:
-        result = project_runner.execute_sql(query_with_limit)
+        result = project_runner.execute_code(query_with_limit)
     except Exception as execution_err:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ExecuteSqlFailure,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ExecuteSqlFailure,
                     message=str(execution_err),
                     data=execution_err.__dict__,
                 )
@@ -5808,52 +5786,51 @@ def run_sql(runners: Dict[str, DbtProject]) -> Union[OsmosisRunResult, OsmosisEr
 
     # Re-extract compiled query and return data structure
     compiled_query = re.search(
-        r"select \* from \(([\w\W]+)\) as osmosis_query", result.compiled_sql
+        r"select \* from \(([\w\W]+)\) as __server_query", result.compiled_code
     ).groups()[0]
     return asdict(
-        OsmosisRunResult(
+        ServerRunResult(
             rows=[list(row) for row in result.table.rows],
             column_names=result.table.column_names,
-            compiled_sql=compiled_query.strip()[1:-1],
-            raw_sql=query,
+            executed_code=compiled_query.strip(),
+            raw_code=query,
         )
     )
 
 
 @route("/compile", method="POST")
 def compile_sql(
-    runners: Dict[str, DbtProject]
-) -> Union[OsmosisCompileResult, OsmosisErrorContainer, str]:
+    runners: DbtProjectContainer,
+) -> Union[ServerCompileResult, ServerErrorContainer, str]:
     """Compiles a SQL query."""
     # Project Support
-    project = request.get_header("X-dbt-Project", CONTAINER_DEFAULT)
-    project_runner = runners.get(project)
-    if project != CONTAINER_DEFAULT and not project_runner:
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    if not project_runner:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectNotRegistered,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
                     message=(
                         "Project is not registered. Make a POST request to the /register endpoint"
                         " first to register a runner"
                     ),
-                    data={"registered_projects": runners.keys()},
+                    data={"registered_projects": runners.registered_projects()},
                 )
             )
         )
-    elif not project_runner:
-        project_runner = runners[CONTAINER_DEFAULT]
 
     # Query Compilation
     query: str = request.body.read().decode("utf-8").strip()
     if has_jinja(query):
         try:
-            compiled_query = project_runner.compile_sql(query).compiled_sql
+            compiled_query = project_runner.compile_code(query).compiled_code
         except Exception as compile_err:
             return asdict(
-                OsmosisErrorContainer(
-                    error=OsmosisError(
-                        code=OsmosisErrorCode.CompileSqlFailure,
+                ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.CompileSqlFailure,
                         message=str(compile_err),
                         data=compile_err.__dict__,
                     )
@@ -5862,36 +5839,35 @@ def compile_sql(
     else:
         compiled_query = query
 
-    return asdict(OsmosisCompileResult(result=compiled_query))
+    return asdict(ServerCompileResult(result=compiled_query))
 
 
 @route(["/parse", "/reset"])
-def reset(runners: Dict[str, DbtProject]) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
-    """Resets the runner and clears the cache."""
+def reset(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErrorContainer, str]:
+    """Reset the runner and clear the cache."""
     # Project Support
-    project = request.get_header("X-dbt-Project", CONTAINER_DEFAULT)
-    project_runner = runners.get(project)
-    if project != CONTAINER_DEFAULT and not project_runner:
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    if not project_runner:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectNotRegistered,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
                     message=(
                         "Project is not registered. Make a POST request to the /register endpoint"
                         " first to register a runner"
                     ),
-                    data={"registered_projects": runners.keys()},
+                    data={"registered_projects": runners.registered_projects()},
                 )
             )
         )
-    elif not project_runner:
-        project_runner = runners[CONTAINER_DEFAULT]
 
     # Determines if we should clear caches and reset config before re-seeding runner
     reset = str(request.query.get("reset", "false")).lower() == "true"
 
     # Get targets
-    old_target = getattr(project_runner.args, "target", project_runner.config.target_name)
+    old_target = getattr(project_runner.base_config, "target", project_runner.config.target_name)
     new_target = request.query.get("target", old_target)
 
     if not reset and old_target == new_target:
@@ -5902,10 +5878,10 @@ def reset(runners: Dict[str, DbtProject]) -> Union[OsmosisResetResult, OsmosisEr
                 target=_reset, args=(project_runner, reset, old_target, new_target)
             )
             parse_job.start()
-            return asdict(OsmosisResetResult(result="Initializing project parsing"))
+            return asdict(ServerResetResult(result="Initializing project parsing"))
         else:
             LOGGER.debug("Mutex is locked, reparse in progress")
-            return asdict(OsmosisResetResult(result="Currently reparsing project"))
+            return asdict(ServerResetResult(result="Currently reparsing project"))
     else:
         # Sync (target changed or reset is true)
         if SERVER_MUTEX.acquire(blocking=old_target != new_target):
@@ -5913,34 +5889,34 @@ def reset(runners: Dict[str, DbtProject]) -> Union[OsmosisResetResult, OsmosisEr
             return asdict(_reset(project_runner, reset, old_target, new_target))
         else:
             LOGGER.debug("Mutex is locked, reparse in progress")
-            return asdict(OsmosisResetResult(result="Currently reparsing project"))
+            return asdict(ServerResetResult(result="Currently reparsing project"))
 
 
 def _reset(
     runner: DbtProject, reset: bool, old_target: str, new_target: str
-) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
-    """Helper function to reset the project runner.
+) -> Union[ServerResetResult, ServerErrorContainer]:
+    """Reset the project runner.
 
-    Can be called asynchronously or synchronously."""
+    Can be called asynchronously or synchronously.
+    """
     target_did_change = old_target != new_target
     try:
-        runner.args.target = new_target
+        runner.base_config.target = new_target
         LOGGER.debug("Starting reparse")
-        runner.rebuild_dbt_manifest(reset=reset or target_did_change)
+        runner.safe_parse_project(reinit=reset or target_did_change)
     except Exception as reparse_err:
         LOGGER.debug("Reparse error")
-        runner.args.target = old_target
-        rv = OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.ProjectParseFailure,
+        runner.base_config.target = old_target
+        rv = ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
                 message=str(reparse_err),
                 data=reparse_err.__dict__,
             )
         )
     else:
         LOGGER.debug("Reparse success")
-        runner._version += 1
-        rv = OsmosisResetResult(
+        rv = ServerResetResult(
             result=(
                 f"Profile target changed from {old_target} to {new_target}!"
                 if target_did_change
@@ -5954,17 +5930,15 @@ def _reset(
 
 
 @route("/register", method="POST")
-def register(
-    runners: Dict[str, DbtProject]
-) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
-    """Registers a new project runner."""
+def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErrorContainer, str]:
+    """Register a new project runner."""
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectHeaderNotSupplied,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectHeaderNotSupplied,
                     message=(
                         "Project header `X-dbt-Project` was not supplied but is required for this"
                         " endpoint"
@@ -5975,7 +5949,7 @@ def register(
         )
     if project in runners:
         # Idempotent
-        return asdict(OsmosisRegisterResult(added=project, projects=runners.keys()))
+        return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
     # Inputs
     project_dir = request.json["project_dir"]
@@ -5990,9 +5964,9 @@ def register(
         )
     except Exception as init_err:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectParseFailure,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectParseFailure,
                     message=str(init_err),
                     data=init_err.__dict__,
                 )
@@ -6000,21 +5974,20 @@ def register(
         )
 
     runners[project] = new_runner
-    return asdict(OsmosisRegisterResult(added=project, projects=runners.keys()))
+    runners.add_parsed_project
+    return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
 
 @route("/unregister", method="POST")
-def unregister(
-    runners: Dict[str, DbtProject]
-) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
-    """Unregisters a project runner from the server."""
+def unregister(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErrorContainer, str]:
+    """Unregister a project runner from the server."""
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectHeaderNotSupplied,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectHeaderNotSupplied,
                     message=(
                         "Project header `X-dbt-Project` was not supplied but is required for this"
                         " endpoint"
@@ -6025,46 +5998,75 @@ def unregister(
         )
     if project not in runners:
         return asdict(
-            OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectNotRegistered,
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
                     message=(
                         "Project is not registered. Make a POST request to the /register endpoint"
                         " first to register a runner"
                     ),
-                    data={"registered_projects": runners.keys()},
+                    data={"registered_projects": runners.registered_projects()},
                 )
             )
         )
-    runners.pop(project)
-    return asdict(OsmosisUnregisterResult(removed=project, projects=runners.keys()))
+    runners.drop_project(project)
+    return asdict(ServerUnregisterResult(removed=project, projects=runners.registered_projects()))
 
 
 @route(["/health", "/api/health"], methods="GET")
-def health_check(runner: DbtProject) -> dict:
+def health_check(runners: DbtProjectContainer) -> dict:
     """Health check endpoint."""
+    # Project Support
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    if not project_runner:
+        return asdict(
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
+                    message=(
+                        "Project is not registered. Make a POST request to the /register endpoint"
+                        " first to register a runner"
+                    ),
+                    data={"registered_projects": runners.registered_projects()},
+                )
+            )
+        )
     return {
         "result": {
             "status": "ready",
-            "project_name": runner.config.project_name,
-            "target_name": runner.config.target_name,
-            "profile_name": runner.config.project_name,
-            "logs": runner.config.log_path,
-            "timestamp": str(datetime.datetime.utcnow()),
-            "runner_parse_iteration": runner._version,
+            "project_name": project_runner.config.project_name,
+            "target_name": project_runner.config.target_name,
+            "profile_name": project_runner.config.project_name,
+            "logs": project_runner.config.log_path,
+            "timestamp": str(datetime.utcnow()),
             "error": None,
         },
         "id": str(uuid.uuid4()),
-        "dbt-osmosis-server": __name__,
+        "dbt-interface-server": __name__,
     }
 
 
 def run_server(runner: DbtProject, host="localhost", port=8581):
-    """Run the server."""
-    install(DbtOsmosisPlugin(runner=runner))
-    install(
-        JSONPlugin(
-            json_dumps=lambda body: json.dumps(body, default=server_json_default).decode("utf-8")
-        )
-    )
+    """Run the dbt core interface server.
+
+    See supported servers below. By default, the server will run with the
+    `WSGIRefServer` which is a pure Python server. If you want to use a different server,
+    you will need to install the dependencies for that server.
+
+    (CGIServer, FlupFCGIServer, WSGIRefServer, WaitressServer,
+    CherryPyServer, CherootServer, PasteServer, FapwsServer,
+    TornadoServer, AppEngineServer, TwistedServer, DieselServer,
+    MeinheldServer, GunicornServer, EventletServer, GeventServer,
+    BjoernServer, AiohttpServer, AiohttpUVLoopServer, AutoServer)
+    """
+    install(DbtInterfaceServerPlugin(runner=runner))
+    install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
     run(host=host, port=port)
+
+
+if __name__ == "__main__":
+    # TODO: Add CLI args to make the standalone file more interesting
+    # Include data diffs, etc.
+    run_server(DbtProject())
