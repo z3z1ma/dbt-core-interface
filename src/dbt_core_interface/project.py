@@ -6007,6 +6007,169 @@ def unregister(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerE
     return asdict(ServerUnregisterResult(removed=project, projects=runners.registered_projects()))
 
 
+@route("/v1/info", methods="GET")
+def trino_info(runners: DbtProjectContainer):
+    """Trino info endpoint."""
+    return {
+        "coordinator": {},
+        "workers": [],
+        "memory": {},
+        "jvm": {},
+        "system": {},
+    }
+
+
+# TODO: These are here while we map agate types to trino types.
+# public final class ClientStandardTypes
+# {
+#     public static final String BIGINT = "bigint";
+#     public static final String INTEGER = "integer";
+#     public static final String SMALLINT = "smallint";
+#     public static final String TINYINT = "tinyint";
+#     public static final String BOOLEAN = "boolean";
+#     public static final String DATE = "date";
+#     public static final String DECIMAL = "decimal";
+#     public static final String REAL = "real";
+#     public static final String DOUBLE = "double";
+#     public static final String HYPER_LOG_LOG = "HyperLogLog";
+#     public static final String QDIGEST = "qdigest";
+#     public static final String P4_HYPER_LOG_LOG = "P4HyperLogLog";
+#     public static final String INTERVAL_DAY_TO_SECOND = "interval day to second";
+#     public static final String INTERVAL_YEAR_TO_MONTH = "interval year to month";
+#     public static final String TIMESTAMP = "timestamp";
+#     public static final String TIMESTAMP_WITH_TIME_ZONE = "timestamp with time zone";
+#     public static final String TIME = "time";
+#     public static final String TIME_WITH_TIME_ZONE = "time with time zone";
+#     public static final String VARBINARY = "varbinary";
+#     public static final String VARCHAR = "varchar";
+#     public static final String CHAR = "char";
+#     public static final String ROW = "row";
+#     public static final String ARRAY = "array";
+#     public static final String MAP = "map";
+#     public static final String JSON = "json";
+#     public static final String IPADDRESS = "ipaddress";
+#     public static final String UUID = "uuid";
+#     public static final String GEOMETRY = "Geometry";
+#     public static final String SPHERICAL_GEOGRAPHY = "SphericalGeography";
+#     public static final String BING_TILE = "BingTile";
+#     private ClientStandardTypes() {}
+# }
+
+# TODO: This is just a note to acknowledge that we cannot use the default trino catalog
+# yet some integrations may expect this type of query to succeed.
+# select schema_name AS label,
+# schema_name AS schema,
+# 'connection.schema' as type,
+# 'group-by-ref-type' as iconId,
+# '<catalog>' as database
+# from <catalog>.information_schema.schemata
+
+
+@route("/v1/statement", method="POST")
+def trino_statement(runners: DbtProjectContainer):
+    """Trino statement endpoint.
+
+    This endpoint is used to execute queries and return the results.
+    It is very minimal right now. The only purpose is to proxy SELECT queries
+    to dbt from a JDBC and return the results to the JDBC.
+    """
+    from agate import data_types
+
+    # User Support
+    _user = request.headers.get("X-Presto-User", "default")
+    # Project Support
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    if not project_runner:
+        return {
+            "errorName": "ProjectNotRegistered",
+            "errorType": "USER_ERROR",
+            "errorLocation": {"lineNumber": 1, "columnNumber": 1},
+            "error": "Project is not registered. Make a POST request to the /register endpoint",
+        }
+    query = request.body.read().decode("utf-8")
+    res = project_runner.execute_code(query)
+    columns = []
+    for column in res.table.columns:
+        if isinstance(column.data_type, data_types.Text):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "varchar",
+                    "typeSignature": {
+                        "rawType": "varchar",
+                        "arguments": [{"kind": "LONG_LITERAL", "value": 255}],
+                    },
+                }
+            ]
+        elif isinstance(column.data_type, data_types.Number):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "bigint",
+                    "typeSignature": {"rawType": "bigint", "arguments": []},
+                }
+            ]
+        elif isinstance(column.data_type, data_types.Boolean):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "boolean",
+                    "typeSignature": {"rawType": "boolean", "arguments": []},
+                }
+            ]
+        elif isinstance(column.data_type, data_types.Date):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "date",
+                    "typeSignature": {"rawType": "date", "arguments": []},
+                }
+            ]
+        elif isinstance(column.data_type, data_types.DateTime):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "timestamp",
+                    "typeSignature": {"rawType": "timestamp", "arguments": []},
+                }
+            ]
+        elif isinstance(column.data_type, data_types.TimeDelta):
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "interval day to second",
+                    "typeSignature": {
+                        "rawType": "interval day to second",
+                        "arguments": [],
+                    },
+                }
+            ]
+        else:
+            columns += [
+                {
+                    "name": column.name,
+                    "type": "varchar",
+                    "typeSignature": {
+                        "rawType": "varchar",
+                        "arguments": [{"kind": "LONG_LITERAL", "value": 255}],
+                    },
+                }
+            ]
+    return {
+        "id": "someId",
+        # TODO: this should not be static
+        "infoUri": "http://localhost:8581/v1/info",
+        "columns": columns,
+        "data": [list(row) for row in res.table.rows],
+        "stats": {
+            "state": "FINISHED",
+            "nodes": 1,
+        },
+    }
+
+
 @route(["/health", "/api/health"], methods="GET")
 def health_check(runners: DbtProjectContainer) -> dict:
     """Health check endpoint."""
