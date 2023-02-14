@@ -37,19 +37,20 @@ def test_server():
     import random
     import time
     from concurrent.futures import ThreadPoolExecutor
+
     from webtest import TestApp
+
     from dbt_core_interface.project import (
-        install,
         DbtInterfaceServerPlugin,
-        DbtProject,
-        server_serializer,
         JSONPlugin,
-        app,
         __dbt_major_version__,
         __dbt_minor_version__,
+        app,
+        install,
+        server_serializer,
     )
 
-    install(DbtInterfaceServerPlugin(runner=DbtProject()))
+    install(DbtInterfaceServerPlugin())
     install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
     client = TestApp(app.default)
 
@@ -182,11 +183,9 @@ def test_server():
     t2 = time.perf_counter()
     print(
         (t2 - t1) / LOAD_TEST_SIZE,
-        (
-            f"seconds per `/compile` across {LOAD_TEST_SIZE} calls from"
-            f" {SIMULATED_CLIENTS} simulated clients randomly distributed between"
-            f" {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars"
-        ),
+        f"seconds per `/compile` across {LOAD_TEST_SIZE} calls from"
+        f" {SIMULATED_CLIENTS} simulated clients randomly distributed between"
+        f" {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars",
     )
 
     print("\n", "=" * 20, "\n")
@@ -205,11 +204,9 @@ def test_server():
     t2 = time.perf_counter()
     print(
         (t2 - t1) / LOAD_TEST_SIZE,
-        (
-            f"seconds per `/run` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated"
-            f" clients randomly distributed between {len(PROJECTS)} different projects with a sql"
-            f" statement of ~{len(STATEMENT)} chars"
-        ),
+        f"seconds per `/run` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated"
+        f" clients randomly distributed between {len(PROJECTS)} different projects with a sql"
+        f" statement of ~{len(STATEMENT)} chars",
     )
 
     e.shutdown(wait=True)

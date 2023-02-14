@@ -1614,10 +1614,8 @@ class Route(object):
             0,
             13,
             "Route.get_config() is deprecated.",
-            (
-                "The Route.config property already includes values from the"
-                " application config for missing keys. Access it directly."
-            ),
+            "The Route.config property already includes values from the"
+            " application config for missing keys. Access it directly.",
         )
         return self.config.get(key, default)
 
@@ -1653,10 +1651,8 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(catchall) keyword argument.",
-                (
-                    "The 'catchall' setting is now part of the app "
-                    "configuration. Fix: `app.config['catchall'] = False`"
-                ),
+                "The 'catchall' setting is now part of the app "
+                "configuration. Fix: `app.config['catchall'] = False`",
             )
             self.config["catchall"] = False
         if kwargs.get("autojson") is False:
@@ -1664,10 +1660,8 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(autojson) keyword argument.",
-                (
-                    "The 'autojson' setting is now part of the app "
-                    "configuration. Fix: `app.config['json.enable'] = False`"
-                ),
+                "The 'autojson' setting is now part of the app "
+                "configuration. Fix: `app.config['json.enable'] = False`",
             )
             self.config["json.disable"] = True
 
@@ -1797,10 +1791,8 @@ class Bottle(object):
                 0,
                 13,
                 "Prefix must end in '/'. Falling back to WSGI mount.",
-                (
-                    "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
-                    " parent application."
-                ),
+                "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
+                " parent application.",
             )
             return self._mount_wsgi(prefix, app, **options)
 
@@ -4094,7 +4086,8 @@ def parse_date(ims):
 
 
 def parse_auth(header):
-    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None"""
+    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None
+    """
     try:
         method, data = header.split(None, 1)
         if method.lower() == "basic":
@@ -5724,10 +5717,11 @@ class DbtInterfaceServerPlugin:
     name = "dbt-interface-server"
     api = 2
 
-    def __init__(self, runner: DbtProject):
+    def __init__(self, runner: Optional[DbtProject] = None):
         """Initialize the plugin with the runner to inject into the request context."""
         self.runners = DbtProjectContainer()
-        self.runners.add_parsed_project(runner)
+        if runner:
+            self.runners.add_parsed_project(runner)
 
     def apply(self, callback, route):
         """Apply the plugin to the route callback."""

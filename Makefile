@@ -74,3 +74,6 @@ test-dbt13: .venv-dbt13/bin/python
 test-dbt14: .venv-dbt14/bin/python
 	.venv-dbt14/bin/python -m pytest tests
 .PHONY: test-dbt14
+
+test: test-dbt10 test-dbt11 test-dbt12 test-dbt13 test-dbt14
+.PHONY: test
