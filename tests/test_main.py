@@ -4,7 +4,7 @@
 def test_import_succeeds() -> None:
     """A simple test to ensure that the project module can be imported.
 
-    This implicitly garuantees both that none of the surface area of dbt-core
+    This implicitly guarantees both that none of the surface area of dbt-core
     imports have changed and that our import side-effects are succeeding.
     It exits with a status code of zero.
     """
@@ -14,7 +14,10 @@ def test_import_succeeds() -> None:
 
 
 def test_list():
-    """Test the list method of the project module."""
+    """Test the list method of the project module.
+
+    This validates project parsing and the ability to list nodes.
+    """
     from dbt_core_interface.project import DbtProject
 
     project = DbtProject(
@@ -183,9 +186,11 @@ def test_server():
     t2 = time.perf_counter()
     print(
         (t2 - t1) / LOAD_TEST_SIZE,
-        f"seconds per `/compile` across {LOAD_TEST_SIZE} calls from"
-        f" {SIMULATED_CLIENTS} simulated clients randomly distributed between"
-        f" {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars",
+        (
+            f"seconds per `/compile` across {LOAD_TEST_SIZE} calls from"
+            f" {SIMULATED_CLIENTS} simulated clients randomly distributed between"
+            f" {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars"
+        ),
     )
 
     print("\n", "=" * 20, "\n")
@@ -204,9 +209,11 @@ def test_server():
     t2 = time.perf_counter()
     print(
         (t2 - t1) / LOAD_TEST_SIZE,
-        f"seconds per `/run` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated"
-        f" clients randomly distributed between {len(PROJECTS)} different projects with a sql"
-        f" statement of ~{len(STATEMENT)} chars",
+        (
+            f"seconds per `/run` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated"
+            f" clients randomly distributed between {len(PROJECTS)} different projects with a sql"
+            f" statement of ~{len(STATEMENT)} chars"
+        ),
     )
 
     e.shutdown(wait=True)

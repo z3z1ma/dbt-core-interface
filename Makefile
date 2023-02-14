@@ -1,12 +1,12 @@
 # Makes it easy to create virtual environments for different versions of dbt
-ADAPTERS = bigquery sqlite duckdb
-ADAPTERS_WITHOUT_DUCKDB = bigquery sqlite
+ADAPTERS = sqlite duckdb
+ADAPTERS_WITHOUT_DUCKDB = sqlite
 
 everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python .venv-dbt13/bin/python .venv-dbt14/bin/python
 .PHONY: everything
 
 .venv-dbt10/bin/python:
-	python -m venv --upgrade-deps .venv-dbt10
+	python -m venv .venv-dbt10
 	.venv-dbt10/bin/pip install --upgrade wheel
 	.venv-dbt10/bin/pip install -e .
 	for adapter in $(ADAPTERS); do \
@@ -15,7 +15,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	done
 
 .venv-dbt11/bin/python:
-	python -m venv --upgrade-deps .venv-dbt11
+	python -m venv .venv-dbt11
 	.venv-dbt11/bin/pip install --upgrade wheel
 	.venv-dbt11/bin/pip install -e .
 	for adapter in $(ADAPTERS); do \
@@ -24,7 +24,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	done
 
 .venv-dbt12/bin/python:
-	python -m venv --upgrade-deps .venv-dbt12
+	python -m venv .venv-dbt12
 	.venv-dbt12/bin/pip install --upgrade wheel
 	.venv-dbt12/bin/pip install -e .
 	for adapter in $(ADAPTERS); do \
@@ -33,7 +33,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	done
 
 .venv-dbt13/bin/python:
-	python -m venv --upgrade-deps .venv-dbt13
+	python -m venv .venv-dbt13
 	.venv-dbt13/bin/pip install --upgrade wheel
 	.venv-dbt13/bin/pip install -e .
 	for adapter in $(ADAPTERS); do \
@@ -43,7 +43,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 
 # DuckDB is not supported in dbt 1.4.0 yet
 .venv-dbt14/bin/python:
-	python -m venv --upgrade-deps .venv-dbt14
+	python -m venv .venv-dbt14
 	.venv-dbt14/bin/pip install --upgrade wheel
 	.venv-dbt14/bin/pip install -e .
 	for adapter in $(ADAPTERS_WITHOUT_DUCKDB); do \
@@ -55,25 +55,25 @@ clean:
 	rm -rf .venv-dbt10 .venv-dbt11 .venv-dbt12 .venv-dbt13 .venv-dbt14
 .PHONY: clean
 
-test-dbt10: .venv-dbt10/bin/python
+test-dbt1.0: .venv-dbt10/bin/python
 	.venv-dbt10/bin/python -m pytest tests
-.PHONY: test-dbt10
+.PHONY: test-dbt1.0
 
-test-dbt11: .venv-dbt11/bin/python
+test-dbt1.1: .venv-dbt11/bin/python
 	.venv-dbt11/bin/python -m pytest tests
-.PHONY: test-dbt11
+.PHONY: test-dbt1.1
 
-test-dbt12: .venv-dbt12/bin/python
+test-dbt1.2: .venv-dbt12/bin/python
 	.venv-dbt12/bin/python -m pytest tests
-.PHONY: test-dbt12
+.PHONY: test-dbt1.2
 
-test-dbt13: .venv-dbt13/bin/python
+test-dbt1.3: .venv-dbt13/bin/python
 	.venv-dbt13/bin/python -m pytest tests
-.PHONY: test-dbt13
+.PHONY: test-dbt1.3
 
-test-dbt14: .venv-dbt14/bin/python
+test-dbt1.4: .venv-dbt14/bin/python
 	.venv-dbt14/bin/python -m pytest tests
-.PHONY: test-dbt14
+.PHONY: test-dbt1.4
 
-test: test-dbt10 test-dbt11 test-dbt12 test-dbt13 test-dbt14
+test: test-dbt1.0 test-dbt1.1 test-dbt1.2 test-dbt1.3 test-dbt1.4
 .PHONY: test
