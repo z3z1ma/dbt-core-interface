@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """The interface for interacting with dbt-core.
 
 We package the interface as a single python module that can be imported
@@ -7,7 +6,8 @@ and used in other python projects. You do not need to include dbt-core-interface
 as a dependency in your project if you do not want to. You can simply copy
 the dbt_core_interface folder into your project and import it from there.
 """
-from __future__ import print_function
+
+# region dbt-core-interface imports & monkey patches
 
 
 if 1:  # this stops ruff from complaining about the import order
@@ -166,6 +166,16 @@ __all__ = [
     "__dbt_minor_version__",
     "__dbt_patch_version__",
     "DEFAULT_PROFILES_DIR",
+    "ServerRunResult",
+    "ServerCompileResult",
+    "ServerResetResult",
+    "ServerRegisterResult",
+    "ServerUnregisterResult",
+    "ServerErrorCode",
+    "ServerError",
+    "ServerErrorContainer",
+    "ServerPlugin",
+    "run_server",
 ]
 
 T = TypeVar("T")
@@ -174,6 +184,10 @@ JINJA_CONTROL_SEQUENCES = ["{{", "}}", "{%", "%}", "{#", "#}"]
 LOGGER = logging.getLogger(__name__)
 
 __version__ = dbt.version.__version__
+
+# endregion
+
+# region dbt-core-interface core
 
 
 class DbtCommand(str, Enum):
@@ -1085,7 +1099,8 @@ def semvar_to_tuple(semvar: "VersionSpecifier") -> Tuple[int, int, int]:
     return (int(semvar.major or 0), int(semvar.minor or 0), int(semvar.patch or 0))
 
 
-# BOTTLE.PY (the region tag lets vscode collapse this, super handy)
+# endregion
+
 # region bottle.py
 
 
@@ -1121,10 +1136,6 @@ def _cli_patch(cli_args):  # pragma: no coverage
             import eventlet
 
             eventlet.monkey_patch()
-
-
-if __name__ == "__main__":
-    _cli_patch(sys.argv)
 
 
 py = sys.version_info
@@ -1167,7 +1178,7 @@ tonat = touni if py3k else tob
 def _stderr(*args):
     try:
         print(*args, file=sys.stderr)
-    except (IOError, AttributeError):
+    except (OSError, AttributeError):
         pass  # Some environments do not allow printing (mod_wsgi)
 
 
@@ -1204,7 +1215,7 @@ def makelist(data):  # This is just too handy
         return []
 
 
-class DictProperty(object):
+class DictProperty:
     """Property that maps to a key in a local dict-like attribute."""
 
     def __init__(self, attr, key=None, read_only=False):
@@ -1234,7 +1245,7 @@ class DictProperty(object):
         del getattr(obj, self.attr)[self.key]
 
 
-class cached_property(object):
+class cached_property:
     """A property that is only computed once per instance and then replaces
     itself with an ordinary attribute. Deleting the attribute resets the
     property."""
@@ -1250,7 +1261,7 @@ class cached_property(object):
         return value
 
 
-class lazy_attribute(object):
+class lazy_attribute:
     """A property that caches itself to the class object."""
 
     def __init__(self, func):
@@ -1302,7 +1313,7 @@ def _re_flatten(p):
     )
 
 
-class Router(object):
+class Router:
     """A Router is an ordered collection of route->target pairs. It is used to
     efficiently match WSGI requests against a number of routes and return
     the first target that satisfies the request. The target may be anything,
@@ -1389,7 +1400,7 @@ class Router(object):
                     key = "anon%d" % anons
                     anons += 1
                 else:
-                    pattern += "(?P<%s>%s)" % (key, mask)
+                    pattern += f"(?P<{key}>{mask})"
                     keys.append(key)
                 if in_filter:
                     filters.append((key, in_filter))
@@ -1411,7 +1422,7 @@ class Router(object):
             re_pattern = re.compile("^(%s)$" % pattern)
             re_match = re_pattern.match
         except re.error as e:
-            raise RouteSyntaxError("Could not add Route: %s (%s)" % (rule, e))
+            raise RouteSyntaxError(f"Could not add Route: {rule} ({e})")
 
         if filters:
 
@@ -1490,7 +1501,7 @@ class Router(object):
                         return target, getargs(path) if getargs else {}
 
         # No matching route found. Collect alternative methods for 405 response
-        allowed = set([])
+        allowed = set()
         nocheck = set(methods)
         for method in set(self.static) - nocheck:
             if path in self.static[method]:
@@ -1508,7 +1519,7 @@ class Router(object):
         raise HTTPError(404, "Not found: " + repr(path))
 
 
-class Route(object):
+class Route:
     """This class wraps a route callback along with route specific metadata and
     configuration and applies Plugins on demand. It is also responsible for
     turning an URL path rule into a regular expression usable by the Router.
@@ -1614,17 +1625,19 @@ class Route(object):
             0,
             13,
             "Route.get_config() is deprecated.",
-            "The Route.config property already includes values from the"
-            " application config for missing keys. Access it directly.",
+            (
+                "The Route.config property already includes values from the"
+                " application config for missing keys. Access it directly."
+            ),
         )
         return self.config.get(key, default)
 
     def __repr__(self):
         cb = self.get_undecorated_callback()
-        return "<%s %s -> %s:%s>" % (self.method, self.rule, cb.__module__, cb.__name__)
+        return f"<{self.method} {self.rule} -> {cb.__module__}:{cb.__name__}>"
 
 
-class Bottle(object):
+class Bottle:
     """Each Bottle object represents a single, distinct web application and
     consists of routes, callbacks, plugins, resources and configuration.
     Instances are callable WSGI applications.
@@ -1651,8 +1664,10 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(catchall) keyword argument.",
-                "The 'catchall' setting is now part of the app "
-                "configuration. Fix: `app.config['catchall'] = False`",
+                (
+                    "The 'catchall' setting is now part of the app "
+                    "configuration. Fix: `app.config['catchall'] = False`"
+                ),
             )
             self.config["catchall"] = False
         if kwargs.get("autojson") is False:
@@ -1660,8 +1675,10 @@ class Bottle(object):
                 0,
                 13,
                 "Bottle(autojson) keyword argument.",
-                "The 'autojson' setting is now part of the app "
-                "configuration. Fix: `app.config['json.enable'] = False`",
+                (
+                    "The 'autojson' setting is now part of the app "
+                    "configuration. Fix: `app.config['json.enable'] = False`"
+                ),
             )
             self.config["json.disable"] = True
 
@@ -1687,7 +1704,7 @@ class Bottle(object):
 
     @cached_property
     def _hooks(self):
-        return dict((name, []) for name in self.__hook_names)
+        return {name: [] for name in self.__hook_names}
 
     def add_hook(self, name, func):
         """Attach a callback to a hook. Three hooks are currently implemented:
@@ -1791,8 +1808,10 @@ class Bottle(object):
                 0,
                 13,
                 "Prefix must end in '/'. Falling back to WSGI mount.",
-                "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
-                " parent application.",
+                (
+                    "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
+                    " parent application."
+                ),
             )
             return self._mount_wsgi(prefix, app, **options)
 
@@ -2205,7 +2224,7 @@ class Bottle(object):
         self.__dict__[name] = value
 
 
-class BaseRequest(object):
+class BaseRequest:
     """A wrapper for WSGI environment dictionaries that adds a lot of
     convenient access methods and properties. Most of them are read-only.
 
@@ -2638,7 +2657,7 @@ class BaseRequest(object):
             self.environ.pop("bottle.request." + key, None)
 
     def __repr__(self):
-        return "<%s: %s %s>" % (self.__class__.__name__, self.method, self.url)
+        return f"<{self.__class__.__name__}: {self.method} {self.url}>"
 
     def __getattr__(self, name):
         """Search in self.environ for additional user defined attributes."""
@@ -2676,7 +2695,7 @@ def _hval(value):
     return value
 
 
-class HeaderProperty(object):
+class HeaderProperty:
     def __init__(self, name, reader=None, writer=None, default=""):
         self.name, self.default = name, default
         self.reader, self.writer = reader, writer
@@ -2695,7 +2714,7 @@ class HeaderProperty(object):
         del obj[self.name]
 
 
-class BaseResponse(object):
+class BaseResponse:
     """Storage class for a response body as well as headers and cookies.
 
     This class does support dict-like case-insensitive item-access to
@@ -2752,7 +2771,7 @@ class BaseResponse(object):
         assert issubclass(cls, BaseResponse)
         copy = cls()
         copy.status = self.status
-        copy._headers = dict((k, v[:]) for (k, v) in self._headers.items())
+        copy._headers = {k: v[:] for (k, v) in self._headers.items()}
         if self._cookies:
             cookies = copy._cookies = SimpleCookie()
             for k, v in self._cookies.items():
@@ -2978,7 +2997,7 @@ class BaseResponse(object):
     def __repr__(self):
         out = ""
         for name, value in self.headerlist:
-            out += "%s: %s\n" % (name.title(), value.strip())
+            out += f"{name.title()}: {value.strip()}\n"
         return out
 
 
@@ -3032,7 +3051,7 @@ Response = BaseResponse
 
 class HTTPResponse(Response, BottleException):
     def __init__(self, body="", status=None, headers=None, **more_headers):
-        super(HTTPResponse, self).__init__(body, status, headers, **more_headers)
+        super().__init__(body, status, headers, **more_headers)
 
     def apply(self, other):
         other._status_code = self._status_code
@@ -3048,14 +3067,14 @@ class HTTPError(HTTPResponse):
     def __init__(self, status=None, body=None, exception=None, traceback=None, **more_headers):
         self.exception = exception
         self.traceback = traceback
-        super(HTTPError, self).__init__(body, status, **more_headers)
+        super().__init__(body, status, **more_headers)
 
 
 class PluginError(BottleException):
     pass
 
 
-class JSONPlugin(object):
+class JSONPlugin:
     name = "json"
     api = 2
 
@@ -3117,7 +3136,7 @@ class JSONPlugin(object):
         return wrapper
 
 
-class TemplatePlugin(object):
+class TemplatePlugin:
     """This plugin applies the :func:`view` decorator to all routes with a
     `template` config parameter. If the parameter is a tuple, the second
     element must be a dict with additional options (e.g. `template_engine`)
@@ -3140,7 +3159,7 @@ class TemplatePlugin(object):
 
 
 #: Not a plugin, but part of the plugin API. TODO: Find a better place.
-class _ImportRedirect(object):
+class _ImportRedirect:
     def __init__(self, name, impmask):
         """Create a virtual package that redirects imports (see PEP 302)."""
         self.name = name
@@ -3186,7 +3205,7 @@ class MultiDict(DictMixin):
     """
 
     def __init__(self, *a, **k):
-        self.dict = dict((k, [v]) for (k, v) in dict(*a, **k).items())
+        self.dict = {k: [v] for (k, v) in dict(*a, **k).items()}
 
     def __len__(self):
         return len(self.dict)
@@ -3325,7 +3344,7 @@ class FormsDict(MultiDict):
     def __getattr__(self, name, default=unicode()):
         # Without this guard, pickle generates a cryptic TypeError:
         if name.startswith("__") and name.endswith("__"):
-            return super(FormsDict, self).__getattr__(name)
+            return super().__getattr__(name)
         return self.getunicode(name, default=default)
 
 
@@ -3721,7 +3740,7 @@ class AppStack(list):
             return self.push()
 
 
-class WSGIFileWrapper(object):
+class WSGIFileWrapper:
     def __init__(self, fp, buffer_size=1024 * 64):
         self.fp, self.buffer_size = fp, buffer_size
         for attr in "fileno", "close", "read", "readlines", "tell", "seek":
@@ -3736,7 +3755,7 @@ class WSGIFileWrapper(object):
             part = read(buff)
 
 
-class _closeiter(object):
+class _closeiter:
     """This only exists to be able to attach a .close method to iterators that
     do not support attribute assignment (most of itertools)."""
 
@@ -3752,7 +3771,7 @@ class _closeiter(object):
             func()
 
 
-class ResourceManager(object):
+class ResourceManager:
     """This class manages a list of search paths and helps to find and open
     application-bound resources (files).
 
@@ -3838,11 +3857,11 @@ class ResourceManager(object):
         """Find a resource and return a file object, or raise IOError."""
         fname = self.lookup(name)
         if not fname:
-            raise IOError("Resource %r not found." % name)
+            raise OSError("Resource %r not found." % name)
         return self.opener(fname, mode=mode, *args, **kwargs)
 
 
-class FileUpload(object):
+class FileUpload:
     def __init__(self, fileobj, name, filename, headers=None):
         """Wrapper for file uploads."""
         #: Open file(-like) object (BytesIO buffer or temporary file)
@@ -3903,7 +3922,7 @@ class FileUpload(object):
             if os.path.isdir(destination):
                 destination = os.path.join(destination, self.filename)
             if not overwrite and os.path.exists(destination):
-                raise IOError("File exists.")
+                raise OSError("File exists.")
             with open(destination, "wb") as fp:
                 self._copy_file(fp, chunk_size)
         else:
@@ -4086,8 +4105,7 @@ def parse_date(ims):
 
 
 def parse_auth(header):
-    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None
-    """
+    """Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None"""
     try:
         method, data = header.split(None, 1)
         if method.lower() == "basic":
@@ -4318,7 +4336,7 @@ uninstall = make_default_app_wrapper("uninstall")
 url = make_default_app_wrapper("get_url")
 
 
-class ServerAdapter(object):
+class ServerAdapter:
     quiet = False
 
     def __init__(self, host="127.0.0.1", port=8080, **options):
@@ -4330,8 +4348,8 @@ class ServerAdapter(object):
         pass
 
     def __repr__(self):
-        args = ", ".join("%s=%s" % (k, repr(v)) for k, v in self.options.items())
-        return "%s(%s)" % (self.__class__.__name__, args)
+        args = ", ".join(f"{k}={repr(v)}" for k, v in self.options.items())
+        return f"{self.__class__.__name__}({args})"
 
 
 class CGIServer(ServerAdapter):
@@ -4747,7 +4765,7 @@ def load(target, **namespace):
         return getattr(sys.modules[module], target)
     package_name = module.split(".")[0]
     namespace[package_name] = sys.modules[package_name]
-    return eval("%s.%s" % (module, target), namespace)
+    return eval(f"{module}.{target}", namespace)
 
 
 def load_app(target):
@@ -4858,7 +4876,9 @@ def run(
         server.quiet = server.quiet or quiet
         if not server.quiet:
             _stderr(
-                "Bottle (dbt v%s) server starting up (using %s)..." % (__version__, repr(server))
+                "Bottle (dbt v{}) server starting up (using {})...".format(
+                    __version__, repr(server)
+                )
             )
             if server.host.startswith("unix:"):
                 _stderr("Listening on %s" % server.host)
@@ -4936,7 +4956,7 @@ class TemplateError(BottleException):
     pass
 
 
-class BaseTemplate(object):
+class BaseTemplate:
     """Base class and minimal API for template adapters"""
 
     extensions = ["tpl", "html", "thtml", "stpl"]
@@ -4992,8 +5012,8 @@ class BaseTemplate(object):
             if os.path.isfile(fname):
                 return fname
             for ext in cls.extensions:
-                if os.path.isfile("%s.%s" % (fname, ext)):
-                    return "%s.%s" % (fname, ext)
+                if os.path.isfile(f"{fname}.{ext}"):
+                    return f"{fname}.{ext}"
 
     @classmethod
     def global_config(cls, key, *args):
@@ -5177,7 +5197,7 @@ class StplSyntaxError(TemplateError):
     pass
 
 
-class StplParser(object):
+class StplParser:
     """Parser for stpl templates."""
 
     _re_cache = {}  #: Cache for compiled re patterns
@@ -5456,7 +5476,7 @@ HTTP_CODES[429] = "Too Many Requests"
 HTTP_CODES[431] = "Request Header Fields Too Large"
 HTTP_CODES[451] = "Unavailable For Legal Reasons"  # RFC 7725
 HTTP_CODES[511] = "Network Authentication Required"
-_HTTP_STATUS_LINES = dict((k, "%d %s" % (k, v)) for (k, v) in HTTP_CODES.items())
+_HTTP_STATUS_LINES = {k: "%d %s" % (k, v) for (k, v) in HTTP_CODES.items()}
 
 #: The default template used for error pages. Override with @error()
 ERROR_PAGE_TEMPLATE = (
@@ -5558,10 +5578,10 @@ def _main(argv):  # pragma: no coverage
                 config.load_config(cfile)
         except configparser.Error as parse_error:
             _cli_error(parse_error)
-        except IOError:
+        except OSError:
             _cli_error("Unable to read config file %r" % cfile)
         except (UnicodeError, TypeError, ValueError) as error:
-            _cli_error("Unable to parse config file %r: %s" % (cfile, error))
+            _cli_error(f"Unable to parse config file {cfile!r}: {error}")
 
     for cval in args.param or []:
         if "=" in cval:
@@ -5583,6 +5603,7 @@ def _main(argv):  # pragma: no coverage
 
 # endregion
 
+# region: dbt-core-interface server
 
 SERVER_MUTEX = threading.Lock()
 
@@ -5744,6 +5765,7 @@ def run_sql(runners: DbtProjectContainer) -> Union[ServerRunResult, ServerErrorC
         runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
     )
     if not project_runner:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -5802,6 +5824,7 @@ def compile_sql(
         runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
     )
     if not project_runner:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -5844,6 +5867,7 @@ def reset(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErrorC
         runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
     )
     if not project_runner:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -5929,6 +5953,7 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -5978,6 +6003,7 @@ def unregister(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerE
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -5991,6 +6017,7 @@ def unregister(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerE
             )
         )
     if project not in runners:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -6178,6 +6205,7 @@ def health_check(runners: DbtProjectContainer) -> dict:
         runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
     )
     if not project_runner:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
@@ -6205,7 +6233,12 @@ def health_check(runners: DbtProjectContainer) -> dict:
     }
 
 
-def run_server(runner: DbtProject, host="localhost", port=8581):
+ServerPlugin = DbtInterfaceServerPlugin()
+install(ServerPlugin)
+install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
+
+
+def run_server(runner: Optional[DbtProject] = None, host="localhost", port=8581):
     """Run the dbt core interface server.
 
     See supported servers below. By default, the server will run with the
@@ -6218,12 +6251,240 @@ def run_server(runner: DbtProject, host="localhost", port=8581):
     MeinheldServer, GunicornServer, EventletServer, GeventServer,
     BjoernServer, AiohttpServer, AiohttpUVLoopServer, AutoServer)
     """
-    install(DbtInterfaceServerPlugin(runner=runner))
-    install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
+    if runner:
+        ServerPlugin.runners.add_parsed_project(runner)
     run(host=host, port=port)
 
 
+# endregion
+
+# region: dbt-core-interface data diffs
+
+try:
+    # TODO: we can drop this and use subprocesses to run git commands
+    from git import Repo
+except ImportError:
+    pass
+else:
+    from pathlib import Path
+
+    def build_diff_queries(model: str, runner: DbtProject) -> Tuple[str, str]:
+        """Leverage git to build two temporary tables for diffing the results of a query throughout a change."""
+        # Resolve git node
+        node = runner.get_ref_node(model)
+        dbt_path = Path(node.root_path)
+        repo = Repo(dbt_path, search_parent_directories=True)
+        t = next(Path(repo.working_dir).rglob(node.original_file_path)).relative_to(
+            repo.working_dir
+        )
+        sha = repo.head.object.hexsha
+        target = repo.head.object.tree[str(t)]
+
+        # Create original node
+        git_node_name = "z_" + sha[-7:]
+        original_node = runner.get_server_node(
+            target.data_stream.read().decode("utf-8"), git_node_name
+        )
+
+        # Alias changed node
+        changed_node = node
+
+        # Compile models
+        original_node = runner.compile_node(original_node)
+        changed_node = runner.compile_node(changed_node)
+
+        return original_node.compiled_sql, changed_node.compiled_sql
+
+    def build_diff_tables(model: str, runner: DbtProject) -> Tuple[BaseRelation, BaseRelation]:
+        """Leverage git to build two temporary tables for diffing the results of a query throughout a change."""
+        # Resolve git node
+        node = runner.get_ref_node(model)
+        dbt_path = Path(node.root_path)
+        repo = Repo(dbt_path, search_parent_directories=True)
+        t = next(Path(repo.working_dir).rglob(node.original_file_path)).relative_to(
+            repo.working_dir
+        )
+        sha = repo.head.object.hexsha
+        target = repo.head.object.tree[str(t)]
+
+        # Create original node
+        git_node_name = "z_" + sha[-7:]
+        original_node = runner.get_server_node(
+            target.data_stream.read().decode("utf-8"), git_node_name
+        )
+
+        # Alias changed node
+        changed_node = node
+
+        # Compile models
+        original_node = runner.compile_node(original_node).node
+        changed_node = runner.compile_node(changed_node).node
+
+        # Lookup and resolve original ref based on git sha
+        git_node_parts = original_node.database, "dbt_diff", git_node_name
+        ref_a, did_exist = runner.get_or_create_relation(*git_node_parts)
+        if not did_exist:
+            LOGGER.info("Creating new relation for %s", ref_a)
+            with runner.adapter.connection_named("dbt-osmosis"):
+                runner.execute_macro(
+                    "create_schema",
+                    kwargs={"relation": ref_a},
+                )
+                runner.execute_macro(
+                    "create_table_as",
+                    kwargs={
+                        "sql": original_node.compiled_sql,
+                        "relation": ref_a,
+                        "temporary": True,
+                    },
+                    run_compiled_sql=True,
+                )
+
+        # Resolve modified fake ref based on hash of it compiled SQL
+        temp_node_name = (
+            "z_"
+            + hashlib.md5(
+                changed_node.compiled_sql.encode("utf-8"),
+                usedforsecurity=False,
+            ).hexdigest()[-7:]
+        )
+        git_node_parts = original_node.database, "dbt_diff", temp_node_name
+        ref_b, did_exist = runner.get_or_create_relation(*git_node_parts)
+        if not did_exist:
+            ref_b = runner.adapter.Relation.create(*git_node_parts)
+            LOGGER.info("Creating new relation for %s", ref_b)
+            with runner.adapter.connection_named("dbt-osmosis"):
+                runner.execute_macro(
+                    "create_schema",
+                    kwargs={"relation": ref_b},
+                )
+                runner.execute_macro(
+                    "create_table_as",
+                    kwargs={
+                        "sql": original_node.compiled_sql,
+                        "relation": ref_b,
+                        "temporary": True,
+                    },
+                    run_compiled_sql=True,
+                )
+
+        return ref_a, ref_b
+
+    def diff_tables(
+        ref_a: BaseRelation,
+        ref_b: BaseRelation,
+        pk: str,
+        runner: DbtProject,
+        aggregate: bool = True,
+    ) -> "Table":
+        """Given two relations, compare the results and return a table of the differences."""
+        LOGGER.info("Running diff")
+        _, table = runner.adapter_execute(
+            runner.execute_macro(
+                (
+                    "_dbt_osmosis_compare_relations_agg"
+                    if aggregate
+                    else "_dbt_osmosis_compare_relations"
+                ),
+                kwargs={
+                    "a_relation": ref_a,
+                    "b_relation": ref_b,
+                    "primary_key": pk,
+                },
+            ),
+            auto_begin=True,
+            fetch=True,
+        )
+        return table
+
+    def diff_queries(
+        sql_a: str, sql_b: str, pk: str, runner: DbtProject, aggregate: bool = True
+    ) -> "Table":
+        """Given two queries, compare the results and return a table of the differences."""
+        LOGGER.info("Running diff")
+        _, table = runner.adapter_execute(
+            runner.execute_macro(
+                "_dbt_osmosis_compare_queries_agg" if aggregate else "_dbt_osmosis_compare_queries",
+                kwargs={
+                    "a_query": sql_a,
+                    "b_query": sql_b,
+                    "primary_key": pk,
+                },
+            ),
+            auto_begin=True,
+            fetch=True,
+        )
+        return table
+
+    def diff_and_print_to_console(
+        model: str,
+        pk: str,
+        runner: DbtProject,
+        make_temp_tables: bool = False,
+        agg: bool = True,
+        output: str = "table",
+    ) -> None:
+        """Compare two tables and print the results to the console."""
+        import agate
+
+        if make_temp_tables:
+            table = diff_tables(*build_diff_tables(model, runner), pk, runner, agg)
+        else:
+            table = diff_queries(*build_diff_queries(model, runner), pk, runner, agg)
+        print("")
+        output = output.lower()
+        if output == "table":
+            table.print_table()
+        elif output in ("chart", "bar"):
+            if not agg:
+                LOGGER.warn(
+                    "Cannot render output format chart with --no-agg option, defaulting to table"
+                )
+                table.print_table()
+            else:
+                _table = table.compute(
+                    [
+                        (
+                            "in_original, in_changed",
+                            agate.Formula(agate.Text(), lambda r: "%(in_a)s, %(in_b)s" % r),
+                        )
+                    ]
+                )
+                _table.print_bars(
+                    label_column_name="in_original, in_changed", value_column_name="count"
+                )
+        elif output == "csv":
+            table.to_csv("dbt-osmosis-diff.csv")
+        else:
+            LOGGER.warn("No such output format %s, defaulting to table", output)
+            table.print_table()
+
+
+# endregion
+
 if __name__ == "__main__":
-    # TODO: Add CLI args to make the standalone file more interesting
-    # Include data diffs, etc.
-    run_server(DbtProject())
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the dbt interface server. Defaults to the WSGIRefServer"
+    )
+    parser.add_argument(
+        "--host",
+        default="localhost",
+        help="The host to run the server on. Defaults to localhost",
+    )
+    parser.add_argument(
+        "--port",
+        default=8581,
+        help="The port to run the server on. Defaults to 8581",
+    )
+    parser.add_argument(
+        "--project",
+        default=None,
+        help="The path to the dbt project to run. Defaults to None",
+    )
+    args = parser.parse_args()
+    if args.project:
+        run_server(DbtProject.from_path(args.project), host=args.host, port=args.port)
+    else:
+        run_server(host=args.host, port=args.port)
