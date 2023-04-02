@@ -13,7 +13,10 @@ the dbt_core_interface folder into your project and import it from there.
 if 1:  # this stops ruff from complaining about the import order
     import dbt.adapters.factory
 
-    # See ... for more info on this monkey patch
+    # This is the secret sauce that makes dbt-core-interface able to
+    # micromanage multiple projects in memory at once. It is a monkey patch
+    # to overcome a severe design limitation in dbt-core. This will likely
+    # be addressed in a future version of dbt-core.
     dbt.adapters.factory.get_adapter = lambda config: config.adapter  # type: ignore
 
 import _thread as thread
@@ -55,6 +58,7 @@ from inspect import getfullargspec
 from io import BytesIO
 from json import dumps as json_dumps
 from json import loads as json_lds
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from traceback import format_exc, print_exc
 from types import FunctionType
@@ -85,7 +89,7 @@ import dbt.version
 from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
-from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
+from dbt.flags import set_from_args
 from dbt.node_types import NodeType
 from dbt.parser.manifest import PARTIAL_PARSE_FILE_NAME, ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
@@ -93,16 +97,21 @@ from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
 
 
+# brute force import for dbt 1.3 back-compat
+# these are here for consumers of dbt-core-interface
+try:
+    # dbt <= 1.3
+    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
+    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
+except Exception:
+    # dbt > 1.3
+    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
+
 if TYPE_CHECKING:
     # These imports are only used for type checking
     from agate import Table  # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
     from dbt.contracts.connection import AdapterResponse
-    from dbt.contracts.graph.manifest import (  # type: ignore
-        ManifestNode,
-        MaybeNonSource,
-        MaybeParsedSource,
-    )
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
     from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
@@ -129,6 +138,26 @@ if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5
     # I expect a change in dbt 1.5.0 that may make this monkey patch unnecessary
     # but we can reduce the codepath since dbt is **loaded** with telemetry calls...
     dbt.events.functions.fire_event = lambda *args, **kwargs: None
+
+
+def default_project_dir() -> Path:
+    """Get the default project directory."""
+    if "DBT_PROJECT_DIR" in os.environ:
+        return Path(os.environ["DBT_PROJECT_DIR"]).resolve()
+    paths = list(Path.cwd().parents)
+    paths.insert(0, Path.cwd())
+    return next((x for x in paths if (x / "dbt_project.yml").exists()), Path.cwd())
+
+
+def default_profiles_dir() -> Path:
+    """Get the default profiles directory."""
+    if "DBT_PROFILES_DIR" in os.environ:
+        return Path(os.environ["DBT_PROFILES_DIR"]).resolve()
+    return Path.cwd() if (Path.cwd() / "profiles.yml").exists() else Path.home() / ".dbt"
+
+
+DEFAULT_PROFILES_DIR = str(default_profiles_dir())
+DEFAULT_PROJECT_DIR = str(default_project_dir())
 
 
 def write_manifest_for_partial_parse(self: ManifestLoader):
@@ -166,6 +195,7 @@ __all__ = [
     "__dbt_minor_version__",
     "__dbt_patch_version__",
     "DEFAULT_PROFILES_DIR",
+    "DEFAULT_PROJECT_DIR",
     "ServerRunResult",
     "ServerCompileResult",
     "ServerResetResult",
@@ -176,6 +206,10 @@ __all__ = [
     "ServerErrorContainer",
     "ServerPlugin",
     "run_server",
+    "default_project_dir",
+    "default_profiles_dir",
+    "ColumnInfo",
+    "ManifestNode",
 ]
 
 T = TypeVar("T")
@@ -206,7 +240,7 @@ class DbtCommand(str, Enum):
 class DbtConfiguration:
     """The configuration for dbt-core."""
 
-    project_dir: str
+    project_dir: str = DEFAULT_PROJECT_DIR
     profiles_dir: str = DEFAULT_PROFILES_DIR
     target: Optional[str] = None
     threads: int = 1
@@ -214,6 +248,10 @@ class DbtConfiguration:
     _vars: str = "{}"
     # Mutes unwanted dbt output
     quiet: bool = True
+    # We need single threaded, simple, jinja parsing -- no rust/pickling
+    use_experimental_parser: bool = False
+    static_parser: bool = False
+    partial_parse: bool = False
     # A required attribute for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
 
@@ -222,6 +260,11 @@ class DbtConfiguration:
         if self.target is None:
             del self.target
         self.single_threaded = self.threads == 1
+
+    @property
+    def profile(self) -> str:
+        """Access the profiles_dir attribute as a string."""
+        return None
 
     @property
     def vars(self) -> str:
@@ -234,8 +277,12 @@ class DbtConfiguration:
 
         If dict then it will be converted to a string which is what dbt expects.
         """
-        if isinstance(v, dict):
-            v = json.dumps(v)
+        if (__dbt_major_version__, __dbt_minor_version__) >= (1, 5):
+            if isinstance(v, str):
+                v = json.loads(v)
+        else:
+            if isinstance(v, dict):
+                v = json.dumps(v)
         self._vars = v
 
 
@@ -308,7 +355,7 @@ class DbtTaskConfiguration:
         self.fail_fast: bool = kwargs.get("fail_fast", False)
         self.full_refresh: bool = kwargs.get("full_refresh", False)
         self.store_failures: bool = kwargs.get("store_failures", False)
-        self.indirect_selection: bool = kwargs.get("indirect_selection", False)
+        self.indirect_selection: bool = kwargs.get("indirect_selection", "eager")
         self.data: bool = kwargs.get("data", False)
         self.schema: bool = kwargs.get("schema", False)
         self.show: bool = kwargs.get("show", False)
@@ -317,6 +364,18 @@ class DbtTaskConfiguration:
         self.macro: Optional[str] = kwargs.get("macro")
         self.args: str = kwargs.get("args", "{}")
         self.quiet: bool = kwargs.get("quiet", True)
+
+    def __getattribute__(self, __name: str) -> Any:
+        """ "Force all attribute access to be lower case."""
+        return object.__getattribute__(self, __name.lower())
+
+    def __getattr__(self, name: str) -> Any:
+        """Get an attribute from the kwargs if it does not exist on the class.
+
+        This is useful for passing through arbitrary arguments to dbt while still
+        being able to manage some semblance of a sane interface with defaults.
+        """
+        return self.kwargs.get(name)
 
     @classmethod
     def from_runtime_config(cls, config: RuntimeConfig, **kwargs: Any) -> "DbtTaskConfiguration":
@@ -350,19 +409,16 @@ class DbtProject:
         self,
         target: Optional[str] = None,
         profiles_dir: str = DEFAULT_PROFILES_DIR,
-        project_dir: Optional[str] = None,
+        project_dir: str = DEFAULT_PROJECT_DIR,
         threads: int = 1,
         vars: str = "{}",
     ) -> None:
         """Initialize the DbtProject."""
-        env_project_dir = None
-        if "DBT_PROJECT_DIR" in os.environ:
-            env_project_dir = os.path.expanduser(os.environ["DBT_PROJECT_DIR"])
         self.base_config = DbtConfiguration(
             threads=threads,
             target=target,
-            profiles_dir=profiles_dir,
-            project_dir=project_dir or env_project_dir or os.getcwd(),
+            profiles_dir=profiles_dir or DEFAULT_PROFILES_DIR,
+            project_dir=project_dir or DEFAULT_PROJECT_DIR,
         )
         self.base_config.vars = vars
 
@@ -548,13 +604,13 @@ class DbtProject:
         self.compile_code.cache_clear()
         self.unsafe_compile_code.cache_clear()
 
-    def get_ref_node(self, target_model_name: str) -> "MaybeNonSource":
+    def get_ref_node(self, target_model_name: str) -> "ManifestNode":
         """Get a `ManifestNode` from a dbt project model name.
 
         This is the same as one would in a {{ ref(...) }} macro call.
         """
         return cast(
-            "MaybeNonSource",
+            "ManifestNode",
             self.manifest.resolve_ref(
                 target_model_name=target_model_name,
                 target_model_package=None,
@@ -563,15 +619,13 @@ class DbtProject:
             ),
         )
 
-    def get_source_node(
-        self, target_source_name: str, target_table_name: str
-    ) -> "MaybeParsedSource":
+    def get_source_node(self, target_source_name: str, target_table_name: str) -> "ManifestNode":
         """Get a `ManifestNode` from a dbt project source name and table name.
 
         This is the same as one would in a {{ source(...) }} macro call.
         """
         return cast(
-            "MaybeParsedSource",
+            "ManifestNode",
             self.manifest.resolve_source(
                 target_source_name=target_source_name,
                 target_table_name=target_table_name,
@@ -633,7 +687,7 @@ class DbtProject:
         """Get macro as a function which behaves like a Python function."""
 
         def _macro_fn(**kwargs: Any) -> Any:
-            return self.adapter.execute_macro(macro_name, self.manifest, **kwargs)
+            return self.adapter.execute_macro(macro_name, self.manifest, kwargs=kwargs)
 
         return _macro_fn
 
@@ -869,11 +923,14 @@ class DbtProject:
 
     def get_task(self, typ: DbtCommand, args: DbtTaskConfiguration) -> "ManifestTask":
         """Get a dbt-core task by type."""
-        task = self.get_task_cls(typ)(args, self.config)
-        # Render this a no-op on this class instance so that the tasks `run`
-        # method plumbing will defer to our existing in memory manifest.
-        task.load_manifest = lambda *args, **kwargs: None  # type: ignore
-        task.manifest = self.manifest
+        if (__dbt_major_version__, __dbt_minor_version__) < (1, 5):
+            task = self.get_task_cls(typ)(args, self.config)
+            # Render this a no-op on this class instance so that the tasks `run`
+            # method plumbing will defer to our existing in memory manifest.
+            task.load_manifest = lambda *args, **kwargs: None  # type: ignore
+            task.manifest = self.manifest
+        else:
+            task = self.get_task_cls(typ)(args, self.config, self.manifest)
         return task
 
     def list(
@@ -6295,7 +6352,7 @@ else:
 
         return original_node.compiled_sql, changed_node.compiled_sql
 
-    def build_diff_tables(model: str, runner: DbtProject) -> Tuple[BaseRelation, BaseRelation]:
+    def build_diff_tables(model: str, runner: DbtProject) -> Tuple["BaseRelation", "BaseRelation"]:
         """Leverage git to build two temporary tables for diffing the results of a query throughout a change."""
         # Resolve git node
         node = runner.get_ref_node(model)
@@ -6371,8 +6428,8 @@ else:
         return ref_a, ref_b
 
     def diff_tables(
-        ref_a: BaseRelation,
-        ref_b: BaseRelation,
+        ref_a: "BaseRelation",
+        ref_b: "BaseRelation",
         pk: str,
         runner: DbtProject,
         aggregate: bool = True,
@@ -6478,13 +6535,5 @@ if __name__ == "__main__":
         default=8581,
         help="The port to run the server on. Defaults to 8581",
     )
-    parser.add_argument(
-        "--project",
-        default=None,
-        help="The path to the dbt project to run. Defaults to None",
-    )
     args = parser.parse_args()
-    if args.project:
-        run_server(DbtProject.from_path(args.project), host=args.host, port=args.port)
-    else:
-        run_server(host=args.host, port=args.port)
+    run_server(host=args.host, port=args.port)
