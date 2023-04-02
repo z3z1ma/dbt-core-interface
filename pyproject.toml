@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-core-interface"
-version = "0.2.1"
+version = "0.2.2"
 description = "Dbt Core Interface"
 authors = ["Alex Butler <butler.alex2010@gmail.com>"]
 license = "MIT"
@@ -54,11 +54,13 @@ fail_under = 30
 profile = "black"
 force_single_line = false
 lines_after_imports = 2
+exclude = ["dbt_core_interface.py"]
 
 [tool.black]
 line-length = 100
 preview = true
 target-version = ["py38", "py39", "py310", "py311"]
+exclude = ["dbt_core_interface.py"]
 
 [tool.mypy]
 strict = true
@@ -68,7 +70,7 @@ show_column_numbers = true
 show_error_codes = true
 show_error_context = true
 disallow_untyped_calls = false
-exclude = "noxfile.py"
+exclude = ["noxfile.py", "dbt_core_interface.py"]
 
 [tool.ruff]
 line-length = 100
@@ -94,6 +96,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "dbt_core_interface.py",
 ]
 per-file-ignores = { "tests/*" = ["S101"] }
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
