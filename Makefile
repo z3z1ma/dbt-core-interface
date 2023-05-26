@@ -1,6 +1,5 @@
 # Makes it easy to create virtual environments for different versions of dbt
 ADAPTERS = sqlite duckdb
-ADAPTERS_WITHOUT_DUCKDB = sqlite
 
 everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python .venv-dbt13/bin/python .venv-dbt14/bin/python
 .PHONY: everything
@@ -45,15 +44,14 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 		.venv-dbt14/bin/pip install "dbt-$$adapter>=1.4.0,<1.5.0"; \
 	done
 
-# Adapters have not been updated for dbt-core 1.5.0 so we need to
-# install the adapters first and then install dbt-core 1.5.0
+# Relaxed constraint to allow testing dbt-core 1.5.0 with sqlite
 .venv-dbt15/bin/python:
 	python -m venv .venv-dbt15
 	.venv-dbt15/bin/pip install --upgrade wheel setuptools pip
 	.venv-dbt15/bin/pip install pytest WebTest .
 	for adapter in $(ADAPTERS); do \
-		.venv-dbt15/bin/pip install "dbt-$$adapter>=1.4.0"; \
-		.venv-dbt15/bin/pip install "dbt-core==1.5.0b5"; \
+		.venv-dbt15/bin/pip install "dbt-$$adapter>=1.4.0,<1.6.0"; \
+		.venv-dbt15/bin/pip install "dbt-core>=1.5.0,<1.6.0"; \
 	done
 
 clean:

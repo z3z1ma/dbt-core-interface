@@ -27,9 +27,9 @@ jobs:
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.4" }
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.5" }
           # stability test on 3.8 (min python ver) with latest dbt
-          - { python: "3.8", os: "ubuntu-latest", dbt: "1.4" }
+          - { python: "3.8", os: "ubuntu-latest", dbt: "1.5" }
           # stability test on 3.10 with latest dbt on macos (cross platform)
-          - { python: "3.10", os: "macos-latest", dbt: "1.4" }
+          - { python: "3.10", os: "macos-latest", dbt: "1.5" }
 
     env:
       FORCE_COLOR: "1"
