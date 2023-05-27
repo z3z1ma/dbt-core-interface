@@ -109,28 +109,27 @@ def test_lint_command():
     #from dbt_osmosis.core.server_v2 import app
 
     #dbt = app.state.dbt_project_container
-    os.chdir("tests/sqlfluff_templater/fixtures/dbt/dbt_project")
     dbt = DbtProjectContainer()
     dbt.add_project(
         name_override="dbt_project",
-        # project_dir="/app/tests/sqlfluff_templater/fixtures/dbt/dbt_project",
-        # profiles_dir="/app/tests/sqlfluff_templater/fixtures/dbt/profiles_yml/",
-        project_dir=".",
-        profiles_dir="../profiles_yml",
+        project_dir="tests/sqlfluff_templater/fixtures/dbt/dbt_project/",
+        profiles_dir="tests/sqlfluff_templater/fixtures/dbt/profiles_yml/",
+        # project_dir=".",
+        # profiles_dir="../profiles_yml",
         target="dev",
     )
     sql_path = Path(
-        "models/my_new_project/issue_1608.sql"
+        "tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql"
     )
     result = lint_command(
-        Path("."),
+        Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path,
     )
     print(f"{'*'*40} Lint result {'*'*40}")
     print(result)
     print(f"{'*'*40} Lint result {'*'*40}")
     result = lint_command(
-        Path("."),
+        Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path.read_text(),
     )
     print(f"{'*'*40} Lint result {'*'*40}")
