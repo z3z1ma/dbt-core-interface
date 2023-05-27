@@ -764,13 +764,13 @@ i18n = ["Babel (>=2.7)"]
 
 [[package]]
 name = "jinja2-simple-tags"
-version = "0.4.1"
+version = "0.4.0"
 description = "Base classes for quick-and-easy template tag development"
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "jinja2-simple-tags-0.4.1.tar.gz", hash = "sha256:61520e93d22bbdfae2f21e362e3637c90ece5d0e1cd48b86279fcf6e219795f2"},
-    {file = "jinja2_simple_tags-0.4.1-py2.py3-none-any.whl", hash = "sha256:6b44d361df5533670496c4491a5e3e9496f9ce0447347f145c17121627575101"},
+    {file = "jinja2-simple-tags-0.4.0.tar.gz", hash = "sha256:cdebf4ed86dc2f8cfe832734817c5a7c6eb75761a9325e12184a93f8da5040aa"},
+    {file = "jinja2_simple_tags-0.4.0-py2.py3-none-any.whl", hash = "sha256:53b1a0a4095958f6874cfe0a4df74e15587d85a0248be588009e23aa0fdba3bd"},
 ]
 
 [package.dependencies]
@@ -2108,23 +2108,6 @@ tqdm = "*"
 typing-extensions = "*"
 
 [[package]]
-name = "sqlfluff-templater-dbt"
-version = "1.3.2"
-description = "Lint your dbt project SQL"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "sqlfluff-templater-dbt-1.3.2.tar.gz", hash = "sha256:b21b7350a3cb8345638b90468983c06184618a80ee82b5d9fe33b362f4f370d9"},
-    {file = "sqlfluff_templater_dbt-1.3.2-py3-none-any.whl", hash = "sha256:f06698605ed9ad34799af9df23e6627c222f08f7b9bc77dcda878d7c8c485c45"},
-]
-
-[package.dependencies]
-dbt-core = ">=0.20.0"
-jinja2-simple-tags = ">=0.3.1"
-markupsafe = "<=2.0.1"
-sqlfluff = "1.3.2"
-
-[[package]]
 name = "sqlparse"
 version = "0.4.3"
 description = "A non-validating SQL parser."
@@ -2410,4 +2393,4 @@ postgres = ["dbt-postgres", "psycopg2-binary"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.11"
-content-hash = "bf750e4bac35051eba600d3784e7809fa0b95c09d455cfdef7ec990cfd9aca4a"
+content-hash = "48aa99a550266801f75443d2a41116aaee9c56f9aa60214f9ba33b5b88f7171b"

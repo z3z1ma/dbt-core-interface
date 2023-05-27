@@ -5795,9 +5795,12 @@ class DbtInterfaceServerPlugin:
     name = "dbt-interface-server"
     api = 2
 
+    # TODO: Remove this and create in __init__() instead?
+    runners = DbtProjectContainer()
+
     def __init__(self, runner: Optional[DbtProject] = None):
         """Initialize the plugin with the runner to inject into the request context."""
-        self.runners = DbtProjectContainer()
+        #self.runners = DbtProjectContainer()
         if runner:
             self.runners.add_parsed_project(runner)
 

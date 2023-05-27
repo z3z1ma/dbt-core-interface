@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from project import DbtProjectContainer
+from project import DbtInterfaceServerPlugin
 
 from sqlfluff.cli.commands import get_linter_and_formatter
 from sqlfluff.cli.outputstream import FileOutput
@@ -106,16 +106,11 @@ def test_lint_command():
     make it difficult to see the logs.
     """
     logging.basicConfig(level=logging.DEBUG)
-    #from dbt_osmosis.core.server_v2 import app
-
-    #dbt = app.state.dbt_project_container
-    dbt = DbtProjectContainer()
+    dbt = DbtInterfaceServerPlugin.runners
     dbt.add_project(
         name_override="dbt_project",
         project_dir="tests/sqlfluff_templater/fixtures/dbt/dbt_project/",
         profiles_dir="tests/sqlfluff_templater/fixtures/dbt/profiles_yml/",
-        # project_dir=".",
-        # profiles_dir="../profiles_yml",
         target="dev",
     )
     sql_path = Path(
