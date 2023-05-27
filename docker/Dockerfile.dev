@@ -1,0 +1,12 @@
+FROM python:3.10-slim-bullseye
+
+# Set separate working directory for easier debugging.
+WORKDIR /app
+
+RUN pip install 'poetry==1.5.0'
+
+# Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
+COPY . .
+
+RUN poetry install --extras postgres
+# --with test
