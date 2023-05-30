@@ -111,8 +111,8 @@ def test_lint_command():
     make it difficult to see the logs.
     """
     logging.basicConfig(level=logging.DEBUG)
-    from project import DbtInterfaceServerPlugin
-    dbt = DbtInterfaceServerPlugin.runners
+    from project import DbtProjectContainer
+    dbt = DbtProjectContainer()
     dbt.add_project(
         name_override="dbt_project",
         project_dir="tests/sqlfluff_templater/fixtures/dbt/dbt_project/",
