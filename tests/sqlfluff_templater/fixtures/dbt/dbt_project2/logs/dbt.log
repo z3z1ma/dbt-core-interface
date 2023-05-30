@@ -1,0 +1,10 @@
+
+
+============================== 2023-05-27 15:40:50.294567 | 543d5de0-68fc-4f6b-be11-982b159ea0bd ==============================
+[0m15:40:50.294575 [info ] [MainThread]: Running with dbt=1.3.4
+[0m15:40:50.294812 [debug] [MainThread]: running dbt with arguments {'write_json': True, 'use_colors': True, 'printer_width': 80, 'version_check': True, 'partial_parse': True, 'static_parser': True, 'profiles_dir': '/Users/barry.hart/.dbt', 'send_anonymous_usage_stats': True, 'event_buffer_size': 100000, 'quiet': False, 'no_print': False, 'cache_selected_only': False, 'which': 'deps', 'rpc_method': 'deps', 'indirect_selection': 'eager'}
+[0m15:40:50.294893 [debug] [MainThread]: Tracking: tracking
+[0m15:40:50.313371 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5c610>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5d000>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5d540>]}
+[0m15:40:50.313996 [info ] [MainThread]: Warning: No packages were found in packages.yml
+[0m15:40:50.314263 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5d000>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5d540>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104c5d8a0>]}
+[0m15:40:50.314390 [debug] [MainThread]: Flushing usage events
