@@ -18,6 +18,8 @@ services:
     environment:
       - POSTGRES_HOST=postgres
     tty: true
+    ports:
+      - 8581:8581
   postgres:
     image: postgres:14-bullseye
     environment:
