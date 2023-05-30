@@ -116,7 +116,7 @@ if TYPE_CHECKING:
     from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
 
-import dbt_core_interface.g
+import dbt_core_interface.state
 from dbt_core_interface.sqlfluff_util import lint_command
 
 # dbt-core-interface is designed for non-standard use. There is no
@@ -1027,8 +1027,8 @@ class DbtProjectContainer:
 
     def __init__(self) -> None:
         """Initialize the container."""
-        assert dbt_core_interface.g.dbt_project_container is None
-        dbt_core_interface.g.dbt_project_container = self
+        assert dbt_core_interface.state.dbt_project_container is None
+        dbt_core_interface.state.dbt_project_container = self
         self._projects: Dict[str, DbtProject] = OrderedDict()
         self._default_project: Optional[str] = None
 
