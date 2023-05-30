@@ -116,6 +116,8 @@ if TYPE_CHECKING:
     from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
 
+from dbt_core_interface.sqlfluff_util import lint_command
+
 # dbt-core-interface is designed for non-standard use. There is no
 # reason to track usage of this package.
 disable_tracking()
@@ -6293,6 +6295,133 @@ def health_check(runners: DbtProjectContainer) -> dict:
     }
 
 
+# @app.post(
+#     "/lint",
+#     response_model=Union[OsmosisLintResult, OsmosisErrorContainer],
+#     responses={
+#         status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
+#         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
+#     },
+# )
+# async def lint_sql(
+#     request: Request,
+#     response: Response,
+#     sql_path: Optional[str] = None,
+#     # TODO: Should config_path be part of /register instead?
+#     extra_config_path: Optional[str] = None,
+#     x_dbt_project: str = Header(default=DEFAULT),
+# ) -> Union[OsmosisLintResult, OsmosisErrorContainer]:
+#     """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
+#     dbt: DbtProjectContainer = app.state.dbt_project_container
+#     if x_dbt_project == DEFAULT:
+#         project = dbt.get_default_project()
+#     else:
+#         project = dbt.get_project(x_dbt_project)
+#     if project is None:
+#         response.status_code = status.HTTP_404_NOT_FOUND
+#         return OsmosisErrorContainer(
+#             error=OsmosisError(
+#                 code=OsmosisErrorCode.ProjectNotRegistered,
+#                 message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+#                 data={"registered_projects": dbt.registered_projects()},
+#             )
+#         )
+#
+#     # Query Linting
+#     if sql_path is not None:
+#         # Lint a file
+#         sql = Path(sql_path)
+#     else:
+#         # Lint a string
+#         sql = (await request.body()).decode("utf-8")
+#         if not sql:
+#             # No SQL provided -- error.
+#             response.status_code = status.HTTP_400_BAD_REQUEST
+#             return OsmosisErrorContainer(
+#                 error=OsmosisError(
+#                     code=OsmosisErrorCode.SqlNotSupplied,
+#                     message="No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+#                     data={},
+#                 )
+#             )
+#     try:
+#         temp_result = lint_command(
+#             Path(project.project_root),
+#             sql=sql,
+#             extra_config_path=Path(extra_config_path) if extra_config_path else None,
+#         )
+#         result = temp_result["violations"] if temp_result is not None else []
+#     except Exception as lint_err:
+#         logging.exception("Linting failed")
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return OsmosisErrorContainer(
+#             error=OsmosisError(
+#                 code=OsmosisErrorCode.CompileSqlFailure,
+#                 message=str(lint_err),
+#                 data=lint_err.__dict__,
+#             )
+#         )
+#     else:
+#         lint_result = OsmosisLintResult(result=[OsmosisLintError(**error) for error in result])
+#     return lint_result
+
+
+@route('/lint_sql', method='POST')
+def lint_sql(
+    runners: DbtProjectContainer,
+):
+    LOGGER.info(f"lint_sql()")
+    # Project Support
+    project_runner = (
+        runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+    )
+    LOGGER.info(f"got project: {project_runner}")
+    if not project_runner:
+        response.status = 400
+        return asdict(
+            ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
+                    message=(
+                        "Project is not registered. Make a POST request to the /register endpoint"
+                        " first to register a runner"
+                    ),
+                    data={"registered_projects": runners.registered_projects()},
+                )
+            )
+        )
+
+    sql_path = request.query.get("sql_path")
+    LOGGER.info(f"sql_path: {sql_path}")
+    if sql_path:
+        # Lint a file
+        LOGGER.info(f"linting file: {sql_path}")
+        sql = Path(sql_path)
+    else:
+        # Lint a string
+        LOGGER.info(f"linting string")
+        sql = request.json['sql']
+    if not sql:
+        response.status = 400
+        return {'result': 'error', 'message': 'No SQL provided'}
+    try:
+        LOGGER.info(f"Calling lint_command()")
+        temp_result = lint_command(
+            Path(project_runner.config.project_root),
+            sql=sql,
+            extra_config_path=Path(request.query.get("extra_config_path")) if request.query.get("extra_config_path") else None,
+        )
+        result = temp_result["violations"] if temp_result is not None else []
+    except Exception as lint_err:
+        logging.exception("Linting failed")
+        response.status = 500
+        return {'result': 'error', 'message': str(lint_err)}
+    else:
+        LOGGER.info(f"Linting succeeded")
+        lint_result = {"result": [error for error in result]}
+    return lint_result
+
+
 ServerPlugin = DbtInterfaceServerPlugin()
 install(ServerPlugin)
 install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
@@ -6525,6 +6654,7 @@ else:
 if __name__ == "__main__":
     import argparse
 
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         description="Run the dbt interface server. Defaults to the WSGIRefServer"
     )

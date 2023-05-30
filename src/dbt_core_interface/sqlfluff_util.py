@@ -5,14 +5,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from project import DbtInterfaceServerPlugin
-
-from sqlfluff.cli.commands import get_linter_and_formatter
 from sqlfluff.cli.outputstream import FileOutput
 from sqlfluff.core.config import ConfigLoader, FluffConfig
 
+
 # Cache linters (up to 50 though its arbitrary)
-get_linter = lru_cache(maxsize=50)(lambda cfg, stream: get_linter_and_formatter(cfg, stream)[0])
+@lru_cache(maxsize=50)
+def get_linter(
+    config: FluffConfig,
+    stream: FileOutput,
+):
+    """Get linter."""
+    from sqlfluff.cli.commands import get_linter_and_formatter
+    return get_linter_and_formatter(config, stream)[0]
 
 # Cache config to prevent wasted frames
 @lru_cache(maxsize=50)
@@ -106,6 +111,7 @@ def test_lint_command():
     make it difficult to see the logs.
     """
     logging.basicConfig(level=logging.DEBUG)
+    from project import DbtInterfaceServerPlugin
     dbt = DbtInterfaceServerPlugin.runners
     dbt.add_project(
         name_override="dbt_project",
