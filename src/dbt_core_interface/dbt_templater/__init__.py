@@ -1,6 +1,4 @@
 """Defines the hook endpoints for the dbt templater plugin."""
-from project import DbtInterfaceServerPlugin
-
 from sqlfluff.core.plugin import hookimpl
 
 #import dbt_osmosis.core.server_v2
@@ -12,9 +10,11 @@ def get_templaters():
     """Get templaters."""
 
     def create_templater(**kwargs):
+        import dbt_core_interface.g
+        assert dbt_core_interface.g.dbt_project_container is not None, "dbt_core_interface.g.dbt_project_container is None"
         return OsmosisDbtTemplater(
             #dbt_project_container=dbt_osmosis.core.server_v2.app.state.dbt_project_container,
-            dbt_project_container=DbtInterfaceServerPlugin.runners,
+            dbt_project_container=dbt_core_interface.g.dbt_project_container,
             **kwargs
         )
 
