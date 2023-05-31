@@ -211,7 +211,6 @@ __all__ = [
     "ServerErrorCode",
     "ServerError",
     "ServerErrorContainer",
-    #"ServerPlugin",
     "run_server",
     "default_project_dir",
     "default_profiles_dir",
