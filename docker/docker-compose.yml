@@ -2,7 +2,7 @@ version: "2.4"
 
 services:
   app:
-    platform: linux/amd64
+    #platform: linux/amd64
     build:
       context: ../
       dockerfile: docker/Dockerfile.dev

@@ -18,4 +18,3 @@ RUN pip install 'poetry==1.5.0'
 COPY . .
 
 RUN poetry install --extras postgres
-# --with test
