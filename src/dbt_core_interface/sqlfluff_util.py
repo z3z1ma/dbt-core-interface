@@ -111,7 +111,7 @@ def test_lint_command():
     make it difficult to see the logs.
     """
     logging.basicConfig(level=logging.DEBUG)
-    from project import DbtProjectContainer
+    from dbt_core_interface.project import DbtProjectContainer
     dbt = DbtProjectContainer()
     dbt.add_project(
         name_override="dbt_project",
