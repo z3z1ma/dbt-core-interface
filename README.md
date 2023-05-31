@@ -34,7 +34,7 @@ An extremely simplified interface is provided to accomplish all of the following
 
 - Load macros at runtime enabling custom functionality in third party extensions without requiring the dbt packaging system to be managed in userland
 
-- Compile dbt jinja extremely fast and efficiently, thread-safe and stress tested at load via a fastapi server which live compiles SQL
+- Compile dbt jinja extremely fast and efficiently, thread-safe and stress tested at load via a Bottle server which live compiles SQL
 
 - Manage multiple dbt projects in a single process using the DbtProjectContainer class
 
@@ -55,6 +55,16 @@ $ pip install dbt-core-interface
 ## Usage
 
 Please see the [Api Reference] for details.
+
+To launch the Bottle server for live compiling dbt jinja:
+
+    python -m dbt_core_interface.project
+
+This will launch the server on port 8581. You can then make requests to the server, e.g.:
+
+    curl -X POST -H "Content-Type: application/json" -H "X-dbt-Project: dbt_project" -d '{"project_dir":"/app/tests/sqlfluff_templater/fixtures/dbt/dbt_project/","profiles_dir":"/app/tests/sqlfluff_templater/fixtures/dbt/profiles_yml/","target":"dev"}' http://localhost:8581/register
+
+You can change the server hostname and port using the `--host` and `--port` arguments.
 
 ## Contributing
 
