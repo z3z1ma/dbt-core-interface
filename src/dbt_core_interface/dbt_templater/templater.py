@@ -70,7 +70,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             return None, [e]
 
     def _find_node(self, project: DbtProject, fname: str):
-        expected_node_path = os.path.relpath(fname, start=os.path.abspath(project.args.project_dir))
+        expected_node_path = os.path.relpath(fname, start=os.path.abspath(project.config.project_root))
         node = project.get_node_by_path(expected_node_path)
         if node:
             return node
@@ -129,15 +129,14 @@ class OsmosisDbtTemplater(JinjaTemplater):
             if fname:
                 node = self._find_node(osmosis_dbt_project, fname)
                 local.target_sql = Path(
-                    os.path.relpath(fname, start=osmosis_dbt_project.args.project_dir)
+                    os.path.relpath(fname, start=osmosis_dbt_project.config.project_root)
                 )
-                compiled_node = osmosis_dbt_project.compile_node(node)
+                compiled_node = osmosis_dbt_project.compile_from_node(node)
             else:
                 local.target_sql = in_str
                 # TRICKY: Use __wrapped__ to bypass the cache. We *must*
                 # recompile each time, because that's how we get the
                 # make_template() function.
-                #compiled_node = osmosis_dbt_project.compile_sql.__wrapped__(
                 compiled_node = osmosis_dbt_project.compile_code.__wrapped__(
                     osmosis_dbt_project, in_str
                 )

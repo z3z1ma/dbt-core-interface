@@ -1027,10 +1027,10 @@ class DbtProjectContainer:
 
     def __init__(self) -> None:
         """Initialize the container."""
-        assert dbt_core_interface.state.dbt_project_container is None
-        dbt_core_interface.state.dbt_project_container = self
         self._projects: Dict[str, DbtProject] = OrderedDict()
         self._default_project: Optional[str] = None
+        assert dbt_core_interface.state.dbt_project_container is None
+        dbt_core_interface.state.dbt_project_container = self
 
     def get_project(self, project_name: str) -> Optional[DbtProject]:
         """Primary interface to get a project and execute code."""
@@ -6329,10 +6329,15 @@ def lint_sql(
     else:
         # Lint a string
         LOGGER.info(f"linting string")
-        sql = request.json['sql']
+        sql = request.body.getvalue().decode('utf-8')
     if not sql:
         response.status = 400
-        return {'result': 'error', 'message': 'No SQL provided'}
+        return {
+            "error": {
+                "data": {},
+                "message": "No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+            }
+        }
     try:
         LOGGER.info(f"Calling lint_command()")
         temp_result = lint_command(
@@ -6344,7 +6349,12 @@ def lint_sql(
     except Exception as lint_err:
         logging.exception("Linting failed")
         response.status = 500
-        return {'result': 'error', 'message': str(lint_err)}
+        return {
+            "error": {
+                "data": {},
+                "message": str(lint_err),
+            }
+        }
     else:
         LOGGER.info(f"Linting succeeded")
         lint_result = {"result": [error for error in result]}
