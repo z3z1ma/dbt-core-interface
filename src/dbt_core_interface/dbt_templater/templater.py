@@ -1,4 +1,4 @@
-"""Defines the dbt_osmosis templater."""
+"""Specialized dbt templater for embedding in the dbt-core-interface server."""
 
 import os.path
 import logging
@@ -38,12 +38,12 @@ else:
 local = threading.local()
 
 
-class OsmosisDbtTemplater(JinjaTemplater):
-    """dbt templater for dbt-osmosis, based on sqlfluff-templater-dbt."""
+class DCIDbtTemplater(JinjaTemplater):
+    """dbt templater for dbt-core-interface, based on sqlfluff-templater-dbt."""
 
     # Same templater name as sqlfluff-templater-dbt. It is functionally
-    # equivalent to that templater, but optimized for dbt-osmosis. The two
-    # templaters cannot be installed in the same virtualenv.
+    # equivalent to that templater, but optimized for dbt-core-interface.
+    # The two templaters cannot be installed in the same virtualenv.
     name = "dbt"
 
     def __init__(self, **kwargs):
@@ -126,24 +126,24 @@ class OsmosisDbtTemplater(JinjaTemplater):
         return old_from_string(*args, **kwargs)
 
     def _unsafe_process(self, fname, in_str, config=None):
-        osmosis_dbt_project = self.dbt_project_container.get_project_by_root_dir(
+        dbt_project = self.dbt_project_container.get_project_by_root_dir(
             config.get_section((self.templater_selector, self.name, "project_dir"))
         )
         local.make_template = None
         try:
             if fname:
-                node = self._find_node(osmosis_dbt_project, fname)
+                node = self._find_node(dbt_project, fname)
                 local.target_sql = Path(
-                    os.path.relpath(fname, start=osmosis_dbt_project.config.project_root)
+                    os.path.relpath(fname, start=dbt_project.config.project_root)
                 )
-                compiled_node = osmosis_dbt_project.compile_from_node(node)
+                compiled_node = dbt_project.compile_from_node(node)
             else:
                 local.target_sql = in_str
                 # TRICKY: Use __wrapped__ to bypass the cache. We *must*
                 # recompile each time, because that's how we get the
                 # make_template() function.
-                compiled_node = osmosis_dbt_project.compile_code.__wrapped__(
-                    osmosis_dbt_project, in_str
+                compiled_node = dbt_project.compile_code.__wrapped__(
+                    dbt_project, in_str
                 )
         except Exception as err:
             raise SQLFluffSkipFile(  # pragma: no cover
@@ -214,10 +214,10 @@ class OsmosisDbtTemplater(JinjaTemplater):
         )
 
 
-# Monkeypatch Environment.from_string(). OsmosisDbtTemplater uses this to
+# Monkeypatch Environment.from_string(). DCIDbtTemplater uses this to
 # intercept Jinja compilation and capture a template trace.
 old_from_string = Environment.from_string
-Environment.from_string = OsmosisDbtTemplater.from_string
+Environment.from_string = DCIDbtTemplater.from_string
 
 
 class SnapshotExtension(StandaloneTag):
