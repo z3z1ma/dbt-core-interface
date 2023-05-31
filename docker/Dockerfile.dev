@@ -16,5 +16,6 @@ RUN pip install 'poetry==1.5.0'
 
 # Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
 COPY . .
+RUN poetry install
+RUN cat dev_requirements.txt | xargs poetry add
 
-RUN poetry install --extras postgres
