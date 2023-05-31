@@ -7,9 +7,14 @@ from pathlib import Path
 from typing import Optional
 
 from dbt.version import get_installed_version
-from dbt.exceptions import (
-    CompilationException as DbtCompilationException,
-)
+try:
+    from dbt.exceptions import (
+        CompilationException as DbtCompilationException,
+    )
+except ImportError:
+    from dbt.exceptions import (
+        CompilationError as DbtCompilationException,
+    )
 from jinja2 import Environment
 from jinja2_simple_tags import StandaloneTag
 from sqlfluff.core.errors import SQLTemplaterError, SQLFluffSkipFile
