@@ -6594,7 +6594,7 @@ else:
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO)
+    #logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         description="Run the dbt interface server. Defaults to the WSGIRefServer"
     )
