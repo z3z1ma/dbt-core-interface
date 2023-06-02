@@ -37,7 +37,7 @@ def test_lint(param_name, param_value, profiles_dir, project_dir, sqlfluff_confi
     else:
         data = param_value
     response = client.post(
-        f"/lint_sql?{urllib.parse.urlencode(params)}",
+        f"/lint?{urllib.parse.urlencode(params)}",
         data,
         headers={"X-dbt-Project": "dbt_project"},
         **kwargs,
@@ -65,7 +65,7 @@ def test_lint(param_name, param_value, profiles_dir, project_dir, sqlfluff_confi
 
 def test_lint_error_no_sql_provided(profiles_dir, project_dir, sqlfluff_config_path, caplog):
     response = client.post(
-        "/lint_sql",
+        "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         expect_errors=True,
     )
@@ -81,7 +81,7 @@ def test_lint_error_no_sql_provided(profiles_dir, project_dir, sqlfluff_config_p
 
 def test_lint_parse_failure(profiles_dir, project_dir, sqlfluff_config_path, caplog):
     response = client.post(
-        "/lint_sql",
+        "/lint",
         """select
     {{ dbt_utils.star(ref("i_dont_exists")) }}
 from {{ ref("me_either") }}
@@ -122,7 +122,7 @@ def test_massive_parallel_linting(param_name, param_value, clients, sample):
     t1 = time.perf_counter()
     resps = e.map(
         lambda i: client.post(
-            f"/lint_sql?{urllib.parse.urlencode(params)}",
+            f"/lint?{urllib.parse.urlencode(params)}",
             data,
             headers={"X-dbt-Project": "dbt_project"},
             **kwargs,
@@ -132,7 +132,7 @@ def test_massive_parallel_linting(param_name, param_value, clients, sample):
     t2 = time.perf_counter()
     print(
         (t2 - t1) / LOAD_TEST_SIZE,
-        f"seconds per `/lint_sql` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated clients",
+        f"seconds per `/lint` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated clients",
     )
     e.shutdown(wait=True)
     for resp in resps:

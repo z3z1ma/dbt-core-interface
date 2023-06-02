@@ -30,6 +30,7 @@ import functools
 import hashlib
 import hmac
 import http.client as httplib
+import importlib
 import itertools
 import json
 import logging
@@ -6300,7 +6301,7 @@ def health_check(runners: DbtProjectContainer) -> dict:
 
 
 if lint_command:
-    @route('/lint_sql', method='POST')
+    @route('/lint', method='POST')
     def lint_sql(
         runners: DbtProjectContainer,
     ):
@@ -6611,4 +6612,10 @@ if __name__ == "__main__":
     ServerPlugin = DbtInterfaceServerPlugin()
     install(ServerPlugin)
     install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
+
+    if lint_command and importlib.util.find_spec('sqlfluff_templater_dbt'):
+        LOGGER.error("sqlfluff-templater-dbt is not compatible with dbt-core-interface server. "
+                       "Please uninstall it to continue.")
+        sys.exit(1)
+
     run_server(host=args.host, port=args.port)
