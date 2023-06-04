@@ -5714,6 +5714,7 @@ class ServerErrorCode(Enum):
     ProjectParseFailure = 3
     ProjectNotRegistered = 4
     ProjectHeaderNotSupplied = 5
+    MissingRequiredParams = 6
 
 
 @dataclass
@@ -6028,26 +6029,33 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
         return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
     # Inputs
-    project_dir = (
-        request.query.get("project-dir")
-        or request.query.get("project_dir")
-        or request.json.get("project-dir")
-        or request.json["project_dir"]
-    )
-    profiles_dir = (
-        request.query.get("profiles-dir")
-        or request.query.get("profiles_dir")
-        or request.json.get("profiles-dir")
-        or request.json["profiles_dir"]
-    )
-    target = request.query.get("target") or request.json.get("target") or None
+    import contextlib
+    kwargs = {}
+    with contextlib.suppress(AttributeError):
+        params = dict(request.query.decode())
+        kwargs.setdefault("project_dir", params.get("project-dir") or params.get("project_dir"))
+        kwargs.setdefault("profiles_dir", params.get("profiles-dir") or params.get("profiles_dir"))
+        kwargs.setdefault("target", params.get("target"))
+    with contextlib.suppress(AttributeError):
+        params = dict(request.json)
+        kwargs.setdefault("project_dir", params.get("project-dir") or params.get("project_dir"))
+        kwargs.setdefault("profiles_dir", params.get("profiles-dir") or params.get("profiles_dir"))
+        kwargs.setdefault("target", params.get("target"))
+    for k in ("project_dir",):
+        if kwargs.get(k) is None:
+            response.status = 400
+            return asdict(
+                ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.MissingRequiredParams,
+                        message=f"Missing required parameter {k}",
+                        data=dict(request.headers),
+                    )
+                )
+            )
 
     try:
-        new_runner = DbtProject(
-            project_dir=project_dir,
-            profiles_dir=profiles_dir,
-            target=target,
-        )
+        new_runner = DbtProject(**kwargs)
     except Exception as init_err:
         return asdict(
             ServerErrorContainer(
