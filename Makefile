@@ -59,27 +59,27 @@ clean:
 .PHONY: clean
 
 test-dbt1.0: .venv-dbt10/bin/python
-	.venv-dbt10/bin/python -m pytest tests
+	.venv-dbt10/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.0
 
 test-dbt1.1: .venv-dbt11/bin/python
-	.venv-dbt11/bin/python -m pytest tests
+	.venv-dbt11/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.1
 
 test-dbt1.2: .venv-dbt12/bin/python
-	.venv-dbt12/bin/python -m pytest tests
+	.venv-dbt12/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.2
 
 test-dbt1.3: .venv-dbt13/bin/python
-	.venv-dbt13/bin/python -m pytest tests
+	.venv-dbt13/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.3
 
 test-dbt1.4: .venv-dbt14/bin/python
-	.venv-dbt14/bin/python -m pytest tests
+	.venv-dbt14/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.4
 
 test-dbt1.5: .venv-dbt15/bin/python
-	.venv-dbt15/bin/python -m pytest tests
+	.venv-dbt15/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.5
 
 test: test-dbt1.0 test-dbt1.1 test-dbt1.2 test-dbt1.3 test-dbt1.4 test-dbt1.5

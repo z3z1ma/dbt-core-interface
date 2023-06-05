@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-core-interface"
-version = "0.2.3"
+version = "0.2.4"
 description = "Dbt Core Interface"
 authors = ["Alex Butler <butler.alex2010@gmail.com>"]
 license = "MIT"
