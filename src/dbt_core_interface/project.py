@@ -6029,18 +6029,15 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
         return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
     # Inputs
-    import contextlib
     kwargs = {}
-    with contextlib.suppress(AttributeError):
-        params = dict(request.query.decode())
-        kwargs.setdefault("project_dir", params.get("project-dir") or params.get("project_dir"))
-        kwargs.setdefault("profiles_dir", params.get("profiles-dir") or params.get("profiles_dir"))
-        kwargs.setdefault("target", params.get("target"))
-    with contextlib.suppress(AttributeError):
-        params = dict(request.json)
-        kwargs.setdefault("project_dir", params.get("project-dir") or params.get("project_dir"))
-        kwargs.setdefault("profiles_dir", params.get("profiles-dir") or params.get("profiles_dir"))
-        kwargs.setdefault("target", params.get("target"))
+    params = {}
+    if request.query:
+        params.update(dict(request.query.decode()))
+    if request.json:
+        params.update(dict(request.json))
+    kwargs.setdefault("project_dir", params.get("project-dir") or params.get("project_dir"))
+    kwargs.setdefault("profiles_dir", params.get("profiles-dir") or params.get("profiles_dir"))
+    kwargs.setdefault("target", params.get("target"))
     for k in ("project_dir",):
         if kwargs.get(k) is None:
             response.status = 400
