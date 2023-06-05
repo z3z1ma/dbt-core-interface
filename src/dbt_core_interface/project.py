@@ -30,6 +30,7 @@ import functools
 import hashlib
 import hmac
 import http.client as httplib
+import importlib
 import itertools
 import json
 import logging
@@ -115,6 +116,13 @@ if TYPE_CHECKING:
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
     from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
+
+try:
+    import dbt_core_interface.state as dci_state
+    from dbt_core_interface.sqlfluff_util import lint_command
+except ImportError:
+    dci_state = None
+    lint_command = None
 
 # dbt-core-interface is designed for non-standard use. There is no
 # reason to track usage of this package.
@@ -204,7 +212,6 @@ __all__ = [
     "ServerErrorCode",
     "ServerError",
     "ServerErrorContainer",
-    "ServerPlugin",
     "run_server",
     "default_project_dir",
     "default_profiles_dir",
@@ -1026,6 +1033,9 @@ class DbtProjectContainer:
         """Initialize the container."""
         self._projects: Dict[str, DbtProject] = OrderedDict()
         self._default_project: Optional[str] = None
+        if dci_state is not None:
+            assert dci_state.dbt_project_container is None
+            dci_state.dbt_project_container = self
 
     def get_project(self, project_name: str) -> Optional[DbtProject]:
         """Primary interface to get a project and execute code."""
@@ -6142,9 +6152,71 @@ def health_check(runners: DbtProjectContainer) -> dict:
     }
 
 
-ServerPlugin = DbtInterfaceServerPlugin()
-install(ServerPlugin)
-install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
+if lint_command:
+    @route('/lint', method='POST')
+    def lint_sql(
+        runners: DbtProjectContainer,
+    ):
+        LOGGER.info(f"lint_sql()")
+        # Project Support
+        project_runner = (
+            runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+        )
+        LOGGER.info(f"got project: {project_runner}")
+        if not project_runner:
+            response.status = 400
+            return asdict(
+                ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.ProjectNotRegistered,
+                        message=(
+                            "Project is not registered. Make a POST request to the /register endpoint"
+                            " first to register a runner"
+                        ),
+                        data={"registered_projects": runners.registered_projects()},
+                    )
+                )
+            )
+
+        sql_path = request.query.get("sql_path")
+        LOGGER.info(f"sql_path: {sql_path}")
+        if sql_path:
+            # Lint a file
+            LOGGER.info(f"linting file: {sql_path}")
+            sql = Path(sql_path)
+        else:
+            # Lint a string
+            LOGGER.info(f"linting string")
+            sql = request.body.getvalue().decode('utf-8')
+        if not sql:
+            response.status = 400
+            return {
+                "error": {
+                    "data": {},
+                    "message": "No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+                }
+            }
+        try:
+            LOGGER.info(f"Calling lint_command()")
+            temp_result = lint_command(
+                Path(project_runner.config.project_root),
+                sql=sql,
+                extra_config_path=Path(request.query.get("extra_config_path")) if request.query.get("extra_config_path") else None,
+            )
+            result = temp_result["violations"] if temp_result is not None else []
+        except Exception as lint_err:
+            logging.exception("Linting failed")
+            response.status = 500
+            return {
+                "error": {
+                    "data": {},
+                    "message": str(lint_err),
+                }
+            }
+        else:
+            LOGGER.info(f"Linting succeeded")
+            lint_result = {"result": [error for error in result]}
+        return lint_result
 
 
 def run_server(runner: Optional[DbtProject] = None, host="localhost", port=8581):
@@ -6171,6 +6243,7 @@ def run_server(runner: Optional[DbtProject] = None, host="localhost", port=8581)
 if __name__ == "__main__":
     import argparse
 
+    #logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         description="Run the dbt interface server. Defaults to the WSGIRefServer"
     )
@@ -6185,4 +6258,13 @@ if __name__ == "__main__":
         help="The port to run the server on. Defaults to 8581",
     )
     args = parser.parse_args()
+    ServerPlugin = DbtInterfaceServerPlugin()
+    install(ServerPlugin)
+    install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
+
+    if lint_command and importlib.util.find_spec('sqlfluff_templater_dbt'):
+        LOGGER.error("sqlfluff-templater-dbt is not compatible with dbt-core-interface server. "
+                       "Please uninstall it to continue.")
+        sys.exit(1)
+
     run_server(host=args.host, port=args.port)

@@ -21,3 +21,5 @@ __pycache__/
 
 # env files
 .env
+/.idea/
+/tests/sqlfluff_templater/fixtures/dbt/dbt_project2/target/partial_parse.msgpack

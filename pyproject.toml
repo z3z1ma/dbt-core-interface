@@ -72,6 +72,11 @@ show_error_context = true
 disallow_untyped_calls = false
 exclude = ["noxfile.py", "dbt_core_interface.py"]
 
+[tool.poetry.plugins]
+
+[tool.poetry.plugins."sqlfluff"]
+"dbt_templater" = "dbt_core_interface.dbt_templater"
+
 [tool.ruff]
 line-length = 100
 select = ["B", "B9", "C", "D", "E", "F", "N", "S", "W"]
