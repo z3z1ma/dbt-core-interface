@@ -48,8 +48,10 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Set up Make (windows only)
-        if: ${{ matrix.os }} == 'windows-latest'
-        run: choco install make
+        if: ${{ matrix.os == 'windows-latest' }} 
+        uses: crazy-max/ghaction-chocolatey@v2
+        with:
+          args: install make
 
       - name: Upgrade pip
         run: |
