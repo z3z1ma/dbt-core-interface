@@ -6064,6 +6064,7 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
     try:
         new_runner = DbtProject(**kwargs)
     except Exception as init_err:
+        response.status = 400
         return asdict(
             ServerErrorContainer(
                 error=ServerError(
