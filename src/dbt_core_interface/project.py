@@ -5546,8 +5546,7 @@ HTTP_CODES[511] = "Network Authentication Required"
 _HTTP_STATUS_LINES = {k: "%d %s" % (k, v) for (k, v) in HTTP_CODES.items()}
 
 #: The default template used for error pages. Override with @error()
-ERROR_PAGE_TEMPLATE = (
-    """
+ERROR_PAGE_TEMPLATE = """
 %%try:
     %%from %s import DEBUG, request
     <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
@@ -5585,9 +5584,7 @@ ERROR_PAGE_TEMPLATE = (
     <b>ImportError:</b> Could not generate the error page. Please add bottle to
     the import path.
 %%end
-"""
-    % __name__
-)
+""" % __name__
 
 #: A thread-safe instance of :class:`LocalRequest`. If accessed from within a
 #: request callback, this instance always refers to the *current* request
@@ -6153,15 +6150,23 @@ def health_check(runners: DbtProjectContainer) -> dict:
     }
 
 
+@route(["/heartbeat", "/api/heartbeat"], methods="GET")
+def heart_beat() -> dict:
+    """Heart beat endpoint."""
+    return {"result": {"status": "ready"}}
+
+
 if lint_command:
-    @route('/lint', method='POST')
+
+    @route("/lint", method="POST")
     def lint_sql(
         runners: DbtProjectContainer,
     ):
         LOGGER.info(f"lint_sql()")
         # Project Support
         project_runner = (
-            runners.get_project(request.get_header("X-dbt-Project")) or runners.get_default_project()
+            runners.get_project(request.get_header("X-dbt-Project"))
+            or runners.get_default_project()
         )
         LOGGER.info(f"got project: {project_runner}")
         if not project_runner:
@@ -6171,8 +6176,8 @@ if lint_command:
                     error=ServerError(
                         code=ServerErrorCode.ProjectNotRegistered,
                         message=(
-                            "Project is not registered. Make a POST request to the /register endpoint"
-                            " first to register a runner"
+                            "Project is not registered. Make a POST request to the /register"
+                            " endpoint first to register a runner"
                         ),
                         data={"registered_projects": runners.registered_projects()},
                     )
@@ -6188,13 +6193,15 @@ if lint_command:
         else:
             # Lint a string
             LOGGER.info(f"linting string")
-            sql = request.body.getvalue().decode('utf-8')
+            sql = request.body.getvalue().decode("utf-8")
         if not sql:
             response.status = 400
             return {
                 "error": {
                     "data": {},
-                    "message": "No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+                    "message": (
+                        "No SQL provided. Either provide a SQL file path or a SQL string to lint."
+                    ),
                 }
             }
         try:
@@ -6202,7 +6209,11 @@ if lint_command:
             temp_result = lint_command(
                 Path(project_runner.config.project_root),
                 sql=sql,
-                extra_config_path=Path(request.query.get("extra_config_path")) if request.query.get("extra_config_path") else None,
+                extra_config_path=(
+                    Path(request.query.get("extra_config_path"))
+                    if request.query.get("extra_config_path")
+                    else None
+                ),
             )
             result = temp_result["violations"] if temp_result is not None else []
         except Exception as lint_err:
@@ -6244,7 +6255,7 @@ def run_server(runner: Optional[DbtProject] = None, host="localhost", port=8581)
 if __name__ == "__main__":
     import argparse
 
-    #logging.basicConfig(level=logging.INFO)
+    # logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(
         description="Run the dbt interface server. Defaults to the WSGIRefServer"
     )
@@ -6263,9 +6274,11 @@ if __name__ == "__main__":
     install(ServerPlugin)
     install(JSONPlugin(json_dumps=lambda body: json.dumps(body, default=server_serializer)))
 
-    if lint_command and importlib.util.find_spec('sqlfluff_templater_dbt'):
-        LOGGER.error("sqlfluff-templater-dbt is not compatible with dbt-core-interface server. "
-                       "Please uninstall it to continue.")
+    if lint_command and importlib.util.find_spec("sqlfluff_templater_dbt"):
+        LOGGER.error(
+            "sqlfluff-templater-dbt is not compatible with dbt-core-interface server. "
+            "Please uninstall it to continue."
+        )
         sys.exit(1)
 
     run_server(host=args.host, port=args.port)
