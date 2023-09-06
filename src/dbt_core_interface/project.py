@@ -6059,7 +6059,6 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
             )
 
     try:
-        LOGGER.info(f"Parsing dbt project: {project}")
         new_runner = DbtProject(**kwargs)
     except Exception as init_err:
         response.status = 400
@@ -6075,7 +6074,6 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
 
     runners[project] = new_runner
     runners.add_parsed_project
-    LOGGER.info(f"Registered dbt project: {new_runner}")
     return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
 
