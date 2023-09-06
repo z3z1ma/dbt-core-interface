@@ -2057,7 +2057,7 @@ def health_check(runners):
 	if not project_runner:response.status=400;return asdict(ServerErrorContainer(error=ServerError(code=ServerErrorCode.ProjectNotRegistered,message=_b,data={_c:runners.registered_projects()})))
 	return{'result':{'status':'ready','project_name':project_runner.config.project_name,'target_name':project_runner.config.target_name,'profile_name':project_runner.config.project_name,'logs':project_runner.config.log_path,_AB:str(datetime.utcnow()),_n:_A},'id':str(uuid.uuid4()),_AS:__name__}
 @route(["/heartbeat", "/api/heartbeat"], methods=_S)
-def heart_beat():
+def heart_beat(runners):
     """Heart beat endpoint.""";return {"result": {"status":"ready"}}
 ServerPlugin=DbtInterfaceServerPlugin()
 install(ServerPlugin)

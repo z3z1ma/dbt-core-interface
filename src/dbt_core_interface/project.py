@@ -6151,7 +6151,7 @@ def health_check(runners: DbtProjectContainer) -> dict:
 
 
 @route(["/heartbeat", "/api/heartbeat"], methods="GET")
-def heart_beat() -> dict:
+def heart_beat(runners: DbtProjectContainer) -> dict:
     """Heart beat endpoint."""
     return {"result": {"status": "ready"}}
 
