@@ -121,7 +121,8 @@ class DCIDbtTemplater(JinjaTemplater):
 
                     def render_func(in_str):
                         env.add_extension(SnapshotExtension)
-                        return env.from_string(in_str, globals=globals)
+                        template = env.from_string(in_str, globals=globals)
+                        return template.render()
 
                     local.render_func = render_func
 
@@ -197,7 +198,7 @@ class DCIDbtTemplater(JinjaTemplater):
         # will still be null at this point. If so, we replace it with a lambda
         # which just directly returns the input , but _also_ reset the trailing
         # newlines counter because they also won't have been stripped.
-        if render_func is None:
+        if local.render_func is None:
             # NOTE: In this case, we shouldn't re-add newlines, because they
             # were never taken away.
             n_trailing_newlines = 0
@@ -207,8 +208,10 @@ class DCIDbtTemplater(JinjaTemplater):
                 """A render function which just returns the input."""
                 return in_str
 
+            local.render_func = render_func
+
         # At this point assert that we _have_ a render_func
-        assert render_func is not None
+        assert local.render_func is not None
         raw_sliced, sliced_file, templated_sql = self.slice_file(
             source_dbt_sql,
             config=config,
