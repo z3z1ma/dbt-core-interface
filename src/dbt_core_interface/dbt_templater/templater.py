@@ -4,9 +4,10 @@ import os.path
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from dbt.version import get_installed_version
+
 try:
     from dbt.exceptions import (
         CompilationException as DbtCompilationException,
@@ -65,7 +66,7 @@ class DCIDbtTemplater(JinjaTemplater):
             if e.node:
                 return None, [
                     SQLTemplaterError(
-                        f"dbt compilation error on file '{e.node.original_file_path}', " f"{e.msg}"
+                        f"dbt compilation error on file '{e.node.original_file_path}', {e.msg}"
                     )
                 ]
             else:
@@ -75,7 +76,9 @@ class DCIDbtTemplater(JinjaTemplater):
             return None, [e]
 
     def _find_node(self, project: DbtProject, fname: str):
-        expected_node_path = os.path.relpath(fname, start=os.path.abspath(project.config.project_root))
+        expected_node_path = os.path.relpath(
+            fname, start=os.path.abspath(project.config.project_root)
+        )
         node = project.get_node_by_path(expected_node_path)
         if node:
             return node
@@ -113,15 +116,15 @@ class DCIDbtTemplater(JinjaTemplater):
                     the_one = local.target_sql == args[1]
                 if the_one:
                     # Yes. Capture the important arguments and create
-                    # a make_template() function.
+                    # a render_func() function.
                     env = args[0]
                     globals = args[2] if len(args) >= 3 else kwargs["globals"]
 
-                    def make_template(in_str):
+                    def render_func(in_str):
                         env.add_extension(SnapshotExtension)
                         return env.from_string(in_str, globals=globals)
 
-                    local.make_template = make_template
+                    local.render_func = render_func
 
         return old_from_string(*args, **kwargs)
 
@@ -129,7 +132,7 @@ class DCIDbtTemplater(JinjaTemplater):
         dbt_project = self.dbt_project_container.get_project_by_root_dir(
             config.get_section((self.templater_selector, self.name, "project_dir"))
         )
-        local.make_template = None
+        local.render_func: Optional[Callable[[str], str]] = None
         try:
             if fname:
                 node = self._find_node(dbt_project, fname)
@@ -141,10 +144,8 @@ class DCIDbtTemplater(JinjaTemplater):
                 local.target_sql = in_str
                 # TRICKY: Use __wrapped__ to bypass the cache. We *must*
                 # recompile each time, because that's how we get the
-                # make_template() function.
-                compiled_node = dbt_project.compile_code.__wrapped__(
-                    dbt_project, in_str
-                )
+                # render_func() function.
+                compiled_node = dbt_project.compile_code.__wrapped__(dbt_project, in_str)
         except Exception as err:
             raise SQLFluffSkipFile(  # pragma: no cover
                 f"Skipped file {fname} because dbt raised a fatal "
@@ -191,14 +192,28 @@ class DCIDbtTemplater(JinjaTemplater):
         templater_logger.debug("    Node compiled SQL: %r", compiled_sql)
 
         # Adjust for dbt Jinja removing trailing newlines. For more details on
+        # So for files that have no templated elements in then render_func
         # this, see the similar code in sqlfluff-templater.dbt.
         compiled_node.raw_sql = source_dbt_sql
-        compiled_sql = compiled_sql + "\n" * n_trailing_newlines
+        # will still be null at this point. If so, we replace it with a lambda
+        # which just directly returns the input , but _also_ reset the trailing
+        # newlines counter because they also won't have been stripped.
+        if render_func is None:
+            # NOTE: In this case, we shouldn't re-add newlines, because they
+            # were never taken away.
+            n_trailing_newlines = 0
+
+            # Overwrite the render_func placeholder.
+            def render_func(in_str):
+                """A render function which just returns the input."""
+                return in_str
+
+        # At this point assert that we _have_ a render_func
+        assert render_func is not None
         raw_sliced, sliced_file, templated_sql = self.slice_file(
             source_dbt_sql,
-            compiled_sql,
             config=config,
-            make_template=local.make_template,
+            render_func=local.render_func,
             append_to_templated="\n" if n_trailing_newlines else "",
         )
         return (
