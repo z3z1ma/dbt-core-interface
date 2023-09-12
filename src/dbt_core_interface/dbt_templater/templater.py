@@ -28,7 +28,6 @@ templater_logger = logging.getLogger(__name__)
 
 DBT_VERSION = get_installed_version()
 DBT_VERSION_TUPLE = (int(DBT_VERSION.major), int(DBT_VERSION.minor))
-
 if DBT_VERSION_TUPLE >= (1, 3):
     COMPILED_SQL_ATTRIBUTE = "compiled_code"
     RAW_SQL_ATTRIBUTE = "raw_code"
