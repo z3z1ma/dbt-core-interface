@@ -192,7 +192,6 @@ class DCIDbtTemplater(JinjaTemplater):
         templater_logger.debug("    Node compiled SQL: %r", compiled_sql)
 
         # Adjust for dbt Jinja removing trailing newlines. For more details on
-        # So for files that have no templated elements in then render_func
         # this, see the similar code in sqlfluff-templater.dbt.
         compiled_node.raw_sql = source_dbt_sql
         # will still be null at this point. If so, we replace it with a lambda

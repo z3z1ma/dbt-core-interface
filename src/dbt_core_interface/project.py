@@ -5853,7 +5853,8 @@ def run_sql(runners: DbtProjectContainer) -> Union[ServerRunResult, ServerErrorC
     )
 
     try:
-        result = project_runner.execute_code(query_with_limit)
+        run_fn = project_runner.fn_threaded_conn(project_runner.execute_code, query_with_limit)
+        result = run_fn()
     except Exception as execution_err:
         return asdict(
             ServerErrorContainer(
