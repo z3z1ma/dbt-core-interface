@@ -621,6 +621,7 @@ class DbtProject:
             self.manifest.resolve_ref(
                 target_model_name=target_model_name,
                 target_model_package=None,
+                target_model_version=None,
                 current_project=self.config.project_name,
                 node_package=self.config.project_name,
             ),
