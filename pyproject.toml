@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-core-interface"
-version = "0.2.4"
+version = "0.2.8"
 description = "Dbt Core Interface"
 authors = ["Alex Butler <butler.alex2010@gmail.com>"]
 license = "MIT"
@@ -14,7 +14,7 @@ classifiers = ["Development Status :: 3 - Alpha"]
 Changelog = "https://github.com/z3z1ma/dbt-core-interface/releases"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8,<3.12"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"

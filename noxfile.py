@@ -22,7 +22,7 @@ except ImportError:
 
 
 package = "dbt_core_interface"
-python_versions = ["3.8", "3.9", "3.10"]
+python_versions = ["3.8", "3.9", "3.10", "3.11"]
 dbt_versions = ["1.0.9", "1.1.3", "1.2.4", "1.3.2"]
 nox.needs_version = ">= 2021.6.6"
 nox.options.sessions = (
