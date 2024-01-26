@@ -110,7 +110,7 @@ except Exception:
 
 if TYPE_CHECKING:
     # These imports are only used for type checking
-    from agate import Table  # type: ignore  # No stubs for agate
+    from agate import Table # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
     from dbt.contracts.connection import AdapterResponse
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
@@ -124,6 +124,12 @@ except ImportError:
     dci_state = None
     lint_command = None
 
+from agate import Table, Number, Text, Column
+
+try:
+    from dbt.clients.agate_helper import Integer
+except ImportError:
+    from dbt.clients.agate_helper import Number as Integer
 # dbt-core-interface is designed for non-standard use. There is no
 # reason to track usage of this package.
 disable_tracking()
@@ -5870,15 +5876,39 @@ def run_sql(runners: DbtProjectContainer) -> Union[ServerRunResult, ServerErrorC
     compiled_query = re.search(
         r"select \* from \(([\w\W]+)\) as __server_query", result.compiled_code
     ).groups()[0]
+
+    new_columns = []
+    for column in result.table.columns:
+        if isinstance(column.data_type, Integer):
+            # Convert the column to text if it contains integer values
+            converted_column = Column(
+                column._index,
+                column._name,
+                Text(),
+                [convert_int_to_str(value) for value in column._rows],
+                column._keys,
+            )
+        else:
+            converted_column = column
+        new_columns.append(converted_column)
+    new_table = Table(
+        rows=new_columns[0]._rows,  # Assuming all columns have the same number of rows
+        column_names=[column._name for column in new_columns],
+        column_types=[column._data_type for column in new_columns],
+        row_names=new_columns[0]._keys,
+    )
     return asdict(
         ServerRunResult(
-            rows=[list(row) for row in result.table.rows],
-            column_names=result.table.column_names,
+            rows=[list(row) for row in new_table.rows],
+            column_names=new_table.column_names,
             executed_code=compiled_query.strip(),
             raw_code=query,
         )
     )
 
+
+def convert_int_to_str(value):
+    return str(value) if isinstance(value, int) else value
 
 @route("/compile", method="POST")
 def compile_sql(
