@@ -9,7 +9,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	.venv-dbt10/bin/pip install --upgrade wheel setuptools pip
 	.venv-dbt10/bin/pip install pytest WebTest .
 	for adapter in $(ADAPTERS); do \
-		.venv-dbt10/bin/pip install "dbt-$$adapter>=1.0.0,<1.1.0" "dbt-core>=1.0,<1.1.0"; \
+		.venv-dbt10/bin/pip install "dbt-$$adapter>=1.0.0,<1.1.0" "dbt-core>=1.0,<1.1.0" pytz; \
 	done
 
 .venv-dbt11/bin/python:
