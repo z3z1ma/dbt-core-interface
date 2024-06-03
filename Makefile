@@ -1,7 +1,8 @@
 # Makes it easy to create virtual environments for different versions of dbt
 ADAPTERS = sqlite duckdb
 
-everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python .venv-dbt13/bin/python .venv-dbt14/bin/python .venv-dbt15/bin/python
+everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python .venv-dbt13/bin/python .venv-dbt14/bin/python \
+ .venv-dbt15/bin/python .venv-dbt16/bin/python .venv-dbt17/bin/python .venv-dbt18/bin/python
 .PHONY: everything
 
 .venv-dbt10/bin/python:
@@ -76,10 +77,10 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	.venv-dbt18/bin/pip install --upgrade wheel setuptools pip
 	.venv-dbt18/bin/pip install pytest WebTest .
 	for adapter in $(ADAPTERS); do \
-		.venv-dbt18/bin/pip install "dbt-$$adapter>=1.4.0,<1.9.0"; \
 		.venv-dbt18/bin/pip install "dbt-core>=1.8.0,<1.9.0"; \
-		.venv-dbt18/bin/pip install "dbt-adapters>=1.2.0"; \
 		.venv-dbt18/bin/pip install "dbt-common>=1.2.0"; \
+		.venv-dbt18/bin/pip install "dbt-adapters>=1.2.0"; \
+		.venv-dbt18/bin/pip install "dbt-$$adapter>=1.4.0,<1.9.0"; \
 	done
 
 clean:
