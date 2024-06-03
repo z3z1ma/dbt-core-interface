@@ -72,6 +72,9 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 		.venv-dbt17/bin/pip install "dbt-core>=1.7.0,<1.8.0"; \
 	done
 
+# SQLITE adapter is not supported in dbt 1.8+ yet: https://github.com/codeforkjeff/dbt-sqlite/issues
+ADAPTERS = duckdb
+
 .venv-dbt18/bin/python:
 	python -m venv .venv-dbt18
 	.venv-dbt18/bin/pip install --upgrade wheel setuptools pip
@@ -80,6 +83,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 		.venv-dbt18/bin/pip install "dbt-core>=1.8.0,<1.9.0"; \
 		.venv-dbt18/bin/pip install "dbt-$$adapter"; \
 	done
+	.venv-dbt18/bin/pip install --force-reinstall dbt-adapters dbt-common;
 
 clean:
 	rm -rf .venv-dbt10 .venv-dbt11 .venv-dbt12 .venv-dbt13 .venv-dbt14 .venv-dbt15 .venv-dbt16 .venv-dbt17 .venv-dbt18

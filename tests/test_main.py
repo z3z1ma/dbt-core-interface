@@ -21,8 +21,8 @@ def test_list():
     from dbt_core_interface.project import DbtProject
 
     project = DbtProject(
-        project_dir="demo_sqlite",
-        profiles_dir="demo_sqlite",
+        project_dir="demo_duckdb",
+        profiles_dir="demo_duckdb",
         target="dev",
     )
     nodes = project.list("*")
@@ -58,23 +58,23 @@ def test_server():
     client = TestApp(app.default)
 
     SIMULATED_CLIENTS = 50  # noqa: N806
-    DUCKDB_PROJECTS = (  # noqa: N806
-        [
-            "j_shop_1_duckdb",
-            "j_shop_2_duckdb",
-            "h_niceserver_1_duckdb",
-            "h_niceserver_2_duckdb",
-        ]
-        if (__dbt_major_version__, __dbt_minor_version__) < (1, 4)
-        else []  # DuckDB adapter is not supported in dbt 1.4+ yet
-    )
-    SQLITE_PROJECTS = [  # noqa: N806
-        "j_shop_1_sqlite",
-        "j_shop_2_sqlite",
-        "j_shop_3_sqlite",
-        "j_shop_4_sqlite",
-        "h_niceserver_1_sqlite",
+    DUCKDB_PROJECTS = [  # noqa: N806
+        "j_shop_1_duckdb",
+        "j_shop_2_duckdb",
+        "h_niceserver_1_duckdb",
+        "h_niceserver_2_duckdb",
     ]
+    SQLITE_PROJECTS = (
+        [  # noqa: N806
+            "j_shop_1_sqlite",
+            "j_shop_2_sqlite",
+            "j_shop_3_sqlite",
+            "j_shop_4_sqlite",
+            "h_niceserver_1_sqlite",
+        ]
+        if (__dbt_major_version__, __dbt_minor_version__) < (1, 8)
+        else []
+    )  # SQLITE adapter is not supported in dbt 1.8+ yet: https://github.com/codeforkjeff/dbt-sqlite/issues
     PROJECTS = DUCKDB_PROJECTS + SQLITE_PROJECTS  # noqa: N806
 
     for proj in SQLITE_PROJECTS:
