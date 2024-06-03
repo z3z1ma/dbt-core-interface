@@ -144,8 +144,12 @@ try:
     # dbt >= 1.8
     from dbt_common.clients.agate_helper import Integer
 except ImportError:
-    # dbt < 1.8
-    from dbt.clients.agate_helper import Integer
+    try:
+        # dbt < 1.8 and older Agate version
+        from dbt.clients.agate_helper import Integer
+    except ImportError:
+        # dbt < 1.8 and newer Agate version
+        from dbt.clients.agate_helper import Number as Integer
 # dbt-core-interface is designed for non-standard use. There is no
 # reason to track usage of this package.
 disable_tracking()
