@@ -80,7 +80,7 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 		.venv-dbt18/bin/pip install "dbt-core>=1.8.0,<1.9.0"; \
 		.venv-dbt18/bin/pip install "dbt-common>=1.2.0"; \
 		.venv-dbt18/bin/pip install "dbt-adapters>=1.2.0"; \
-		.venv-dbt18/bin/pip install "dbt-$$adapter>=1.4.0,<1.9.0"; \
+		.venv-dbt18/bin/pip install "dbt-$$adapter"; \
 	done
 
 clean:
