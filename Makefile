@@ -54,6 +54,35 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 		.venv-dbt15/bin/pip install "dbt-core>=1.5.0,<1.6.0"; \
 	done
 
+.venv-dbt16/bin/python:
+	python -m venv .venv-dbt16
+	.venv-dbt16/bin/pip install --upgrade wheel setuptools pip
+	.venv-dbt16/bin/pip install pytest WebTest .
+	for adapter in $(ADAPTERS); do \
+		.venv-dbt16/bin/pip install "dbt-$$adapter>=1.5.0,<1.7.0"; \
+		.venv-dbt16/bin/pip install "dbt-core>=1.6.0,<1.7.0"; \
+	done
+
+.venv-dbt17/bin/python:
+	python -m venv .venv-dbt17
+	.venv-dbt17/bin/pip install --upgrade wheel setuptools pip
+	.venv-dbt17/bin/pip install pytest WebTest .
+	for adapter in $(ADAPTERS); do \
+		.venv-dbt17/bin/pip install "dbt-$$adapter>=1.6.0,<1.8.0"; \
+		.venv-dbt17/bin/pip install "dbt-core>=1.7.0,<1.8.0"; \
+	done
+
+.venv-dbt18/bin/python:
+	python -m venv .venv-dbt18
+	.venv-dbt18/bin/pip install --upgrade wheel setuptools pip
+	.venv-dbt18/bin/pip install pytest WebTest .
+	for adapter in $(ADAPTERS); do \
+		.venv-dbt18/bin/pip install "dbt-$$adapter>=1.7.0,<1.9.0"; \
+		.venv-dbt18/bin/pip install "dbt-core>=1.8.0,<1.9.0"; \
+		.venv-dbt18/bin/pip install "dbt-adapters~=1.2.0; \
+		.venv-dbt18/bin/pip install "dbt-common~=1.2.0; \
+	done
+
 clean:
 	rm -rf .venv-dbt10 .venv-dbt11 .venv-dbt12 .venv-dbt13 .venv-dbt14 .venv-dbt15
 .PHONY: clean
@@ -82,5 +111,17 @@ test-dbt1.5: .venv-dbt15/bin/python
 	.venv-dbt15/bin/python -m pytest tests/test_main.py
 .PHONY: test-dbt1.5
 
-test: test-dbt1.0 test-dbt1.1 test-dbt1.2 test-dbt1.3 test-dbt1.4 test-dbt1.5
+test-dbt1.6: .venv-dbt16/bin/python
+	.venv-dbt16/bin/python -m pytest tests/test_main.py
+.PHONY: test-dbt1.6
+
+test-dbt1.7: .venv-dbt17/bin/python
+	.venv-dbt17/bin/python -m pytest tests/test_main.py
+.PHONY: test-dbt1.7
+
+test-dbt1.8: .venv-dbt18/bin/python
+	.venv-dbt18/bin/python -m pytest tests/test_main.py
+.PHONY: test-dbt1.8
+
+test: test-dbt1.0 test-dbt1.1 test-dbt1.2 test-dbt1.3 test-dbt1.4 test-dbt1.5 test-dbt1.6 test-dbt1.7 test-dbt1.8
 .PHONY: test
