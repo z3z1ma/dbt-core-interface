@@ -78,12 +78,12 @@ everything: .venv-dbt10/bin/python .venv-dbt11/bin/python .venv-dbt12/bin/python
 	for adapter in $(ADAPTERS); do \
 		.venv-dbt18/bin/pip install "dbt-$$adapter>=1.4.0,<1.9.0"; \
 		.venv-dbt18/bin/pip install "dbt-core>=1.8.0,<1.9.0"; \
-		.venv-dbt18/bin/pip install "dbt-adapters>=1.2.0; \
-		.venv-dbt18/bin/pip install "dbt-common>=1.2.0; \
+		.venv-dbt18/bin/pip install "dbt-adapters>=1.2.0"; \
+		.venv-dbt18/bin/pip install "dbt-common>=1.2.0"; \
 	done
 
 clean:
-	rm -rf .venv-dbt10 .venv-dbt11 .venv-dbt12 .venv-dbt13 .venv-dbt14 .venv-dbt15
+	rm -rf .venv-dbt10 .venv-dbt11 .venv-dbt12 .venv-dbt13 .venv-dbt14 .venv-dbt15 .venv-dbt16 .venv-dbt17 .venv-dbt18
 .PHONY: clean
 
 test-dbt1.0: .venv-dbt10/bin/python
