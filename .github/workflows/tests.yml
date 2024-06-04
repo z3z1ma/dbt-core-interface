@@ -14,7 +14,6 @@ jobs:
       matrix:
         include:
           # dbt-core now supports Python 3.12
-          - { python: "3.12", os: "ubuntu-latest", dbt: "1.6" }
           - { python: "3.12", os: "ubuntu-latest", dbt: "1.7" }
           - { python: "3.12", os: "ubuntu-latest", dbt: "1.8" }
           # Latest dbts' test matrix on 3.11 (well supported py version) on ubuntu
