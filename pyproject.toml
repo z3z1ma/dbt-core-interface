@@ -14,7 +14,7 @@ classifiers = ["Development Status :: 3 - Alpha"]
 Changelog = "https://github.com/z3z1ma/dbt-core-interface/releases"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8,<3.13"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"

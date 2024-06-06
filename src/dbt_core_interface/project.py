@@ -59,6 +59,7 @@ from inspect import getfullargspec
 from io import BytesIO
 from json import dumps as json_dumps
 from json import loads as json_lds
+from multiprocessing import get_context
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from traceback import format_exc, print_exc
@@ -88,7 +89,12 @@ import dbt.version
 
 # We maintain the smallest possible surface area of dbt imports
 from dbt.adapters.factory import get_adapter_class_by_name
-from dbt.clients.system import make_directory
+try:
+    # dbt >= 1.8
+    from dbt_common.clients.system import make_directory
+except ImportError:
+    # dbt < 1.8
+    from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
 from dbt.flags import set_from_args
 from dbt.node_types import NodeType
@@ -112,9 +118,16 @@ if TYPE_CHECKING:
     # These imports are only used for type checking
     from agate import Table # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
-    from dbt.contracts.connection import AdapterResponse
+    try:
+        # dbt >= 1.8
+        from dbt.adapters.contracts.connection import AdapterResponse
+        from dbt_common.semver import VersionSpecifier
+
+    except ImportError:
+        # dbt < 1.8
+        from dbt.contracts.connection import AdapterResponse
+        from dbt.semver import VersionSpecifier
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
-    from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
 
 try:
@@ -128,9 +141,15 @@ except ImportError:
 from agate import Table, Number, Text, Column
 
 try:
-    from dbt.clients.agate_helper import Integer
+    # dbt >= 1.8
+    from dbt_common.clients.agate_helper import Integer
 except ImportError:
-    from dbt.clients.agate_helper import Number as Integer
+    try:
+        # dbt < 1.8 and older Agate version
+        from dbt.clients.agate_helper import Integer
+    except ImportError:
+        # dbt < 1.8 and newer Agate version
+        from dbt.clients.agate_helper import Number as Integer
 # dbt-core-interface is designed for non-standard use. There is no
 # reason to track usage of this package.
 disable_tracking()
@@ -266,8 +285,10 @@ class DbtConfiguration:
     use_experimental_parser: bool = False
     static_parser: bool = False
     partial_parse: bool = False
-    # A required attribute for dbt, not used by our interface
+    # required attributes for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
+    REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES: bool = field(default_factory=bool)
+    which: str = "blah"
 
     def __post_init__(self) -> None:
         """Post init hook to set single_threaded and remove target if not provided."""
@@ -474,7 +495,12 @@ class DbtProject:
                 LOGGER.debug(f"Failed to cleanup adapter connections: {e}")
         # The adapter.setter verifies connection, resets TTL, and updates adapter ref on config
         # this is thread safe by virtue of the adapter_mutex on the adapter.setter
-        self.adapter = self.get_adapter_cls()(self.config)
+        if (__dbt_major_version__, __dbt_minor_version__) < (1, 8):
+            self.adapter = self.get_adapter_cls()(self.config)
+        else:
+            # from dbt 1.8 adapter decoupling onwwards, 
+            # instantiating an Adapter requires a multiprocessing context.
+            self.adapter = self.get_adapter_cls()(self.config, get_context("spawn"))
 
     @property
     def adapter(self) -> "BaseAdapter":
