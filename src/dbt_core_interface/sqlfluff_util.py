@@ -4,15 +4,33 @@ import os
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from sqlfluff.cli.outputstream import FileOutput
 from sqlfluff.core import SQLLintError, SQLTemplaterError
 from sqlfluff.core.config import ConfigLoader, FluffConfig
-
+from sqlfluff.core.errors import SQLFluffUserError
 
 LOGGER = logging.getLogger(__name__)
 
+class DatacovesConfigLoader(ConfigLoader):
+    def load_extra_config(self, extra_config_path: str) -> Dict[str, Any]:
+        """Load specified extra config."""
+        if not os.path.exists(extra_config_path):
+            raise SQLFluffUserError(
+                f"Extra config '{extra_config_path}' does not exist."
+            )
+
+        configs: Dict[str, Any] = {}
+        if extra_config_path.endswith("pyproject.toml"):
+            elems = self._get_config_elems_from_toml(extra_config_path)
+        else:
+            elems = self._get_config_elems_from_file(extra_config_path)
+        configs = self._incorporate_vals(configs, elems)
+
+        # Store in the cache
+        self._config_cache[str(extra_config_path)] = configs
+        return configs
 
 # Cache linters (up to 50 though its arbitrary)
 @lru_cache(maxsize=50)
@@ -29,6 +47,7 @@ def get_linter(
 def get_config(
     dbt_project_root: Path,
     extra_config_path: Optional[Path] = None,
+    extra_config_mtime: Optional[datetime] = None,
     ignore_local_config: bool = False,
     require_dialect: bool = True,
     **kwargs,
@@ -40,7 +59,7 @@ def get_config(
     directory.
     """
     overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
-    loader = ConfigLoader.get_global()
+    loader = DatacovesConfigLoader().get_global()
 
     # Load config at project root
     base_config = loader.load_config_up_to_path(
@@ -61,7 +80,6 @@ def get_config(
     # Silence output
     stream = FileOutput(config, os.devnull)
     atexit.register(stream.close)
-
     return config, stream
 
 
@@ -86,10 +104,13 @@ def lint_command(
     but for now this should provide maximum compatibility with the command-line
     tool. We can also propose changes to SQLFluff to make this easier.
     """
+    # Get extra_config_path last modification stamp
+    extra_config_mtime = os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
     lnt, formatter = get_linter(
         *get_config(
             project_root,
             extra_config_path,
+            extra_config_mtime,
             ignore_local_config,
             require_dialect=False,
             nocolor=True,
@@ -136,10 +157,13 @@ def format_command(
     {extra_config_path},
     {ignore_local_config})
 """)
+    extra_config_mtime = os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
+
     lnt, formatter = get_linter(
         *get_config(
             project_root,
             extra_config_path,
+            extra_config_mtime,
             ignore_local_config,
             require_dialect=False,
             nocolor=True,
