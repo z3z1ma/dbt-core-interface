@@ -111,5 +111,5 @@ target-version = "py310"
 max-complexity = 10
 
 [build-system]
-requires = ["poetry-core>=1.2.0<1.4.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
