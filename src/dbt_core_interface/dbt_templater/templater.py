@@ -122,6 +122,8 @@ class DCIDbtTemplater(JinjaTemplater):
                     def render_func(in_str):
                         env.add_extension(SnapshotExtension)
                         template = env.from_string(in_str, globals=globals)
+                        if DBT_VERSION_TUPLE >= (1,8):
+                            return template.render(globals)
                         return template.render()
 
                     local.render_func = render_func
