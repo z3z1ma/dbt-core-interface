@@ -540,6 +540,11 @@ class DbtProject:
         # has acquired the lock, TODO: Lets implement a debounce-like buffer here
         with self.parsing_mutex:
             if init:
+                if (__dbt_major_version__, __dbt_minor_version__) >= (1, 8):
+                    from dbt_common.clients.system import get_env
+                    from dbt_common.context import set_invocation_context
+                    set_invocation_context(get_env())
+
                 set_from_args(self.base_config, self.base_config)
                 # We can think of `RuntimeConfig` as a dbt-core "context" object
                 # where a `Project` meets a `Profile` and is a superset of them both
