@@ -556,7 +556,13 @@ class DbtProject:
                 self.config.load_dependencies(),
                 self.adapter.connections.set_query_header,
             )
-
+            if (__dbt_major_version__, __dbt_minor_version__) >= (1, 8):
+                from dbt.context.providers import generate_runtime_macro_context
+                macros_manifest = _project_parser.load_macros(
+                    self.config, self.adapter.connections.set_query_header
+                )
+                self.adapter.set_macro_resolver(macros_manifest)
+                self.adapter.set_macro_context_generator(generate_runtime_macro_context)
             self.manifest = _project_parser.load()
             self.manifest.build_flat_graph()
             _project_parser.save_macros_to_adapter(self.adapter)
