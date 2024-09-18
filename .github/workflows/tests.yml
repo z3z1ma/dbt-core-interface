@@ -20,6 +20,8 @@ jobs:
           - { python: "3.10", os: "ubuntu-latest", dbt: "1.4" }
           - { python: "3.10", os: "ubuntu-latest", dbt: "1.5" }
           - { python: "3.10", os: "ubuntu-latest", dbt: "1.6" }
+          - { python: "3.10", os: "ubuntu-latest", dbt: "1.7" }
+          - { python: "3.10", os: "ubuntu-latest", dbt: "1.8" }
           # full test matrix on 3.9 (well supported py version) on ubuntu
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.0" }
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.1" }
@@ -28,6 +30,8 @@ jobs:
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.4" }
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.5" }
           - { python: "3.9", os: "ubuntu-latest", dbt: "1.6" }
+          - { python: "3.9", os: "ubuntu-latest", dbt: "1.7" }
+          - { python: "3.9", os: "ubuntu-latest", dbt: "1.8" }
           # stability test on 3.8 (min python ver) with latest dbt
           - { python: "3.8", os: "ubuntu-latest", dbt: "1.6" }
           # stability test on 3.10 with latest dbt on macos & windows (cross platform)

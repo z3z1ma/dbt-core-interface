@@ -42,7 +42,7 @@ An extremely simplified interface is provided to accomplish all of the following
 
 ## Requirements
 
-- The **only** requirement is dbt-core, tested with versions `1.0.*`, `1.1.*`, `1.2.*`, `1.3.*`, `1.4.*`, `1.5.*`, `1.6.*`
+- The **only** requirement is dbt-core, tested with versions `1.0.*`, `1.1.*`, `1.2.*`, `1.3.*`, `1.4.*`, `1.5.*`, `1.6.*`,  `1.7.*` &  `1.8.*`
 
 ## Installation
 
