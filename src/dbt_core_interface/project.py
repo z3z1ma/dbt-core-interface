@@ -703,6 +703,8 @@ class DbtProject:
 
         This is a context manager that will clear the node after execution and leverages a mutex during manifest mutation.
         """
+        # Remove {% ... %} patterns from the SQL string
+        sql = re.sub(r'{%.*?%}', '', sql, flags=re.DOTALL)
         with self.manifest_mutation_mutex:
             self._clear_node(node_name)
             sql_node = self.sql_parser.parse_remote(sql, node_name)
