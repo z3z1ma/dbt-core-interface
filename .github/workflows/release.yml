@@ -1,8 +1,5 @@
 name: Release
 
-permissions:
-  id-token: write
-
 on:
   push:
     branches:
