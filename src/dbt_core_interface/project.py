@@ -6450,11 +6450,11 @@ if __name__ == "__main__":
 
             try:
                 new_runner = DbtProject(**kwargs)
-                runners[project] = new_runner
-                runners.add_parsed_project
+                ServerPlugin.runners[project] = new_runner
+                ServerPlugin.runners.add_parsed_project
 
             except Exception as init_error:
-                LOGGER.error("Failed to load savestate:", init_error)
+                LOGGER.error("Failed to load savestate: %s", init_error)
                 LOGGER.error("We'll continue on without trying to restore.")
 
     run_server(host=args.host, port=args.port)
