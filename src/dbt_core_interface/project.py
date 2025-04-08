@@ -6145,6 +6145,13 @@ def register(runners: DbtProjectContainer) -> Union[ServerResetResult, ServerErr
 
     runners[project] = new_runner
     runners.add_parsed_project
+
+    # If we got this far, then it means we were able to register.  Save
+    # our registration state.
+    with open('/tmp/savestate.json', 'wt') as output:
+        kwargs['project'] = project
+        json.dump(kwargs, output)
+
     return asdict(ServerRegisterResult(added=project, projects=runners.registered_projects()))
 
 
@@ -6431,5 +6438,23 @@ if __name__ == "__main__":
             "Please uninstall it to continue."
         )
         sys.exit(1)
+
+    # Reload our state if necessary
+    if os.path.isfile('/tmp/savestate.json'):
+        LOGGER.info("Found savestate file, trying to load it...")
+
+        with open('/tmp/savestate.json', 'rt') as input:
+            kwargs = json.load(input)
+            project = kwargs['project']
+            del kwargs['project']
+
+            try:
+                new_runner = DbtProject(**kwargs)
+                runners[project] = new_runner
+                runners.add_parsed_project
+
+            except Exception as init_error:
+                LOGGER.error("Failed to load savestate:", init_error)
+                LOGGER.error("We'll continue on without trying to restore.")
 
     run_server(host=args.host, port=args.port)
