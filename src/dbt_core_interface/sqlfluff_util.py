@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from sqlfluff.cli.outputstream import FileOutput
 from sqlfluff.core import SQLLintError, SQLTemplaterError
 from sqlfluff.core.config import ConfigLoader, FluffConfig
+from sqlfluff.core.config.loader import load_config_up_to_path
 from sqlfluff.core.errors import SQLFluffUserError
 
 LOGGER = logging.getLogger(__name__)
@@ -62,7 +63,7 @@ def get_config(
     loader = DatacovesConfigLoader().get_global()
 
     # Load config at project root
-    base_config = loader.load_config_up_to_path(
+    base_config = load_config_up_to_path(
         path=str(dbt_project_root),
         extra_config_path=str(extra_config_path) if extra_config_path else None,
         ignore_local_config=ignore_local_config,
