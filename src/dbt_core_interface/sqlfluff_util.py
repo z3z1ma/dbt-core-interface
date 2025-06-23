@@ -14,13 +14,12 @@ from sqlfluff.core.errors import SQLFluffUserError
 
 LOGGER = logging.getLogger(__name__)
 
+
 class DatacovesConfigLoader(ConfigLoader):
     def load_extra_config(self, extra_config_path: str) -> Dict[str, Any]:
         """Load specified extra config."""
         if not os.path.exists(extra_config_path):
-            raise SQLFluffUserError(
-                f"Extra config '{extra_config_path}' does not exist."
-            )
+            raise SQLFluffUserError(f"Extra config '{extra_config_path}' does not exist.")
 
         configs: Dict[str, Any] = {}
         if extra_config_path.endswith("pyproject.toml"):
@@ -33,6 +32,7 @@ class DatacovesConfigLoader(ConfigLoader):
         self._config_cache[str(extra_config_path)] = configs
         return configs
 
+
 # Cache linters (up to 50 though its arbitrary)
 @lru_cache(maxsize=50)
 def get_linter(
@@ -41,7 +41,9 @@ def get_linter(
 ):
     """Get linter."""
     from sqlfluff.cli.commands import get_linter_and_formatter
+
     return get_linter_and_formatter(config, stream)
+
 
 # Cache config to prevent wasted frames
 @lru_cache(maxsize=50)
@@ -106,7 +108,9 @@ def lint_command(
     tool. We can also propose changes to SQLFluff to make this easier.
     """
     # Get extra_config_path last modification stamp
-    extra_config_mtime = os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
+    extra_config_mtime = (
+        os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
+    )
     lnt, formatter = get_linter(
         *get_config(
             project_root,
@@ -158,7 +162,9 @@ def format_command(
     {extra_config_path},
     {ignore_local_config})
 """)
-    extra_config_mtime = os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
+    extra_config_mtime = (
+        os.path.getmtime(str(extra_config_path)) if os.path.exists(str(extra_config_path)) else None
+    )
 
     lnt, formatter = get_linter(
         *get_config(
@@ -181,7 +187,7 @@ def format_command(
                 "convention.is_null,"
                 "jinja.padding,"
                 "structure.distinct,"
-            )
+            ),
         )
     )
 
@@ -203,18 +209,18 @@ def format_command(
     else:
         # Format a SQL file
         LOGGER.info(f"Formatting SQL file: {sql}")
-        before_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        before_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
         LOGGER.info(f"Before fixing, modified: {before_modified}")
         result_sql = None
         lint_result = lnt.lint_paths(
             paths=[str(sql)],
             fix=True,
             ignore_non_existent_files=False,
-            #processes=processes,
+            # processes=processes,
             # If --force is set, then apply the changes as we go rather
             # than waiting until the end.
             apply_fixes=True,
-            #fixed_file_suffix=fixed_suffix,
+            # fixed_file_suffix=fixed_suffix,
             fix_even_unparsable=False,
         )
         total_errors, num_filtered_errors = lint_result.count_tmp_prs_errors()
@@ -224,16 +230,20 @@ def format_command(
             num_fixable = lint_result.num_violations(types=SQLLintError, fixable=True)
             if num_fixable > 0:
                 LOGGER.info(f"Fixing {num_fixable} errors in SQL file")
-                res = lint_result.persist_changes(
-                    formatter=formatter, fixed_file_suffix=""
+                res = lint_result.persist_changes(formatter=formatter, fixed_file_suffix="")
+                after_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime(
+                    "%Y-%m-%d %H:%M:%S"
                 )
-                after_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
                 LOGGER.info(f"After fixing, modified: {after_modified}")
-                LOGGER.info(f"File modification time has changes? {before_modified != after_modified}")
+                LOGGER.info(
+                    f"File modification time has changes? {before_modified != after_modified}"
+                )
                 success = all(res.values())
             else:
                 LOGGER.info("No fixable errors in SQL file")
-    LOGGER.info(f"format_command returning success={success}, result_sql={result_sql[:100] if result_sql is not None else 'n/a'}")
+    LOGGER.info(
+        f"format_command returning success={success}, result_sql={result_sql[:100] if result_sql is not None else 'n/a'}"
+    )
     return success, result_sql
 
 
@@ -245,6 +255,7 @@ def test_lint_command():
     """
     logging.basicConfig(level=logging.DEBUG)
     from dbt_core_interface.project import DbtProjectContainer
+
     dbt = DbtProjectContainer()
     dbt.add_project(
         name_override="dbt_project",
@@ -259,16 +270,16 @@ def test_lint_command():
         Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path,
     )
-    print(f"{'*'*40} Lint result {'*'*40}")
+    print(f"{'*' * 40} Lint result {'*' * 40}")
     print(result)
-    print(f"{'*'*40} Lint result {'*'*40}")
+    print(f"{'*' * 40} Lint result {'*' * 40}")
     result = lint_command(
         Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path.read_text(),
     )
-    print(f"{'*'*40} Lint result {'*'*40}")
+    print(f"{'*' * 40} Lint result {'*' * 40}")
     print(result)
-    print(f"{'*'*40} Lint result {'*'*40}")
+    print(f"{'*' * 40} Lint result {'*' * 40}")
 
 
 def test_format_command():
@@ -279,6 +290,7 @@ def test_format_command():
     """
     logging.basicConfig(level=logging.DEBUG)
     from dbt_core_interface.project import DbtProjectContainer
+
     dbt = DbtProjectContainer()
     dbt.add_project(
         name_override="dbt_project",
@@ -295,7 +307,7 @@ def test_format_command():
         Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path.read_text(),
     )
-    print(f"{'*'*40} Formatting result {'*'*40}")
+    print(f"{'*' * 40} Formatting result {'*' * 40}")
     print(success, result_sql)
 
     # Test formatting a file
@@ -303,11 +315,11 @@ def test_format_command():
         Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path,
     )
-    print(f"{'*'*40} Formatting result {'*'*40}")
+    print(f"{'*' * 40} Formatting result {'*' * 40}")
     print(result)
-    print(f"{'*'*40} Formatting result {'*'*40}")
+    print(f"{'*' * 40} Formatting result {'*' * 40}")
 
 
 if __name__ == "__main__":
-    #test_lint_command()
+    # test_lint_command()
     test_format_command()
