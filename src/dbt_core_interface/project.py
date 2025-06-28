@@ -10,6 +10,7 @@ import functools
 import json
 import logging
 import os
+import shlex
 import threading
 import time
 import typing as t
@@ -19,15 +20,18 @@ from dataclasses import dataclass, field
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
 
-if """
-This patch enables us to support multiple projects in memory at once
-by ensuring any get_adapter call which uses runtime_config will grab
-the attached adapter if it exists. Otherwise, adapters are keyed via
-their credentials type which is incredibly limiting...
-""":
-    import dbt.adapters.factory
+import dbt.adapters.factory
 
-    dbt.adapters.factory.get_adapter = lambda config: config.adapter  # pyright: ignore[reportUnknownLambdaType]
+_get_adapter = dbt.adapters.factory.get_adapter
+
+
+def _patched_adapter_accessor(config: t.Any) -> t.Any:
+    if hasattr(config, "adapter"):
+        return config.adapter
+    return _get_adapter(config)
+
+
+dbt.adapters.factory.get_adapter = _patched_adapter_accessor
 
 import rich.logging
 from agate import Table  # pyright: ignore[reportMissingTypeStubs]
@@ -49,6 +53,9 @@ from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 from dbt_common.events.event_manager_client import add_logger_to_manager
 from dbt_common.events.logger import LoggerConfig
+
+if t.TYPE_CHECKING:
+    from dbt.cli.main import dbtRunnerResult
 
 disable_tracking()
 set_invocation_context(get_env())
@@ -317,7 +324,6 @@ class DbtProject:
         if self._adapter is not None:
             if not replace:
                 self.runtime_config.adapter = self._adapter  # pyright: ignore[reportAttributeAccessIssue]
-                _ = self._adapter.connections.set_connection_name()
                 return self._adapter
             with contextlib.suppress(Exception):
                 if self._pool:
@@ -327,13 +333,10 @@ class DbtProject:
                 _ = atexit.unregister(self._adapter.connections.cleanup_all)
 
         adapter_cls = get_adapter_class_by_name(self.runtime_config.credentials.type)
-        try:
-            self._adapter = t.cast(
-                BaseAdapter,
-                adapter_cls(self.runtime_config, get_mp_context("spawn")),  # pyright: ignore[reportInvalidCast,reportCallIssue]
-            )
-        except ValueError:
-            self._adapter = t.cast(BaseAdapter, adapter_cls(self.runtime_config))  # pyright: ignore[reportInvalidCast]
+        self._adapter = t.cast(
+            BaseAdapter,
+            adapter_cls(self.runtime_config, get_mp_context("spawn")),  # pyright: ignore[reportInvalidCast,reportCallIssue]
+        )
 
         self._adapter_created_at = time.time()
 
@@ -346,7 +349,6 @@ class DbtProject:
         self._adapter.set_macro_context_generator(generate_runtime_macro_context)  # pyright: ignore[reportArgumentType]
         self.__manifest_loader.macro_hook = self._adapter.connections.set_query_header  # pyright: ignore[reportAttributeAccessIssue]
 
-        _ = self._adapter.connections.set_connection_name()
         _ = atexit.register(self._adapter.connections.cleanup_all)
 
         return self._adapter
@@ -362,7 +364,7 @@ class DbtProject:
                 self.runtime_config.load_dependencies(),
             )
 
-        _ = self.create_adapter(replace=reparse_configuration)
+        _ = self.create_adapter(replace=reparse_configuration, verify_connectivity=False)
 
         with self._manifest_lock:
             self.__manifest_loader.manifest = Manifest()
@@ -597,6 +599,23 @@ class DbtProject:
     def create_project_watcher(self, check_interval: float = 2.0) -> DbtProjectWatcher:
         """Create a project watcher for automatic incremental updates."""
         return DbtProjectWatcher(self, check_interval)
+
+    def command(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> dbtRunnerResult:
+        """Run a dbt command with the current project manifest."""
+        from dbt.cli.main import dbtRunner
+
+        runner = dbtRunner(self.manifest)
+        kwargs.update(
+            {
+                "project_dir": str(self.dbt_project_yml.parent),
+                "profiles_dir": str(self.profiles_yml.parent),
+            }
+        )
+        expanded_cmd = [*shlex.split(cmd)]
+        for arg in args:
+            expanded_cmd.extend(shlex.split(str(arg)))
+        with dbt.adapters.factory.adapter_management():
+            return runner.invoke(expanded_cmd, **kwargs)
 
 
 @t.final

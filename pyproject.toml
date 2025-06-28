@@ -103,7 +103,7 @@ exclude = [
     "venv",
     "dbt_core_interface.py",
 ]
-per-file-ignores = { "tests/*" = ["S101"] }
+per-file-ignores = { "tests/*" = ["S101"], "src/dbt_core_interface/project.py" = ["E402"] }
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 target-version = "py310"
 
