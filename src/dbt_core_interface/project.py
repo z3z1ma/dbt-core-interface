@@ -17,6 +17,7 @@ import typing as t
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
 
@@ -43,7 +44,6 @@ from dbt.context.providers import generate_runtime_macro_context, generate_runti
 from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ManifestNode, SourceDefinition
 from dbt.flags import set_from_args
-from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.read_files import FileDiff, InputFile, ReadFilesFromFileSystem
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
@@ -56,6 +56,8 @@ from dbt_common.events.logger import LoggerConfig
 
 if t.TYPE_CHECKING:
     from dbt.cli.main import dbtRunnerResult
+    from sqlfluff.core.config import FluffConfig
+    from sqlfluff.core.linter.linted_dir import LintingRecord
 
 disable_tracking()
 set_invocation_context(get_env())
@@ -325,10 +327,12 @@ class DbtProject:
             if not replace:
                 self.runtime_config.adapter = self._adapter  # pyright: ignore[reportAttributeAccessIssue]
                 return self._adapter
+
             with contextlib.suppress(Exception):
                 if self._pool:
                     self._pool.shutdown(wait=True, cancel_futures=True)
                     self._pool = None
+
                 self._adapter.connections.cleanup_all()
                 _ = atexit.unregister(self._adapter.connections.cleanup_all)
 
@@ -617,6 +621,172 @@ class DbtProject:
         with dbt.adapters.factory.adapter_management():
             return runner.invoke(expanded_cmd, **kwargs)
 
+    _sqlfluff_mtime_cache: dict[Path, float] = {}
+
+    def get_sqlfluff_configuration(
+        self,
+        path: Path | str | None = None,
+        extra_config_path: Path | str | None = None,
+        ignore_local_config: bool = False,
+        **kwargs: t.Any,
+    ) -> FluffConfig:
+        """Load the SQLFluff configuration for a given path, otherwise for the project itself."""
+        from sqlfluff.core.config import ConfigLoader, FluffConfig
+
+        overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
+        overrides["dialect"] = self.runtime_config.credentials.type
+
+        loader = ConfigLoader.get_global()
+        loader_cache = loader._config_cache  # pyright: ignore[reportPrivateUsage]
+        for p in list(loader_cache):
+            p_obj = Path(p)
+            last_mtime = self._sqlfluff_mtime_cache.get(p_obj, 0.0)
+            curr_mtime = p_obj.stat().st_mtime if p_obj.exists() else 0.0
+            if curr_mtime > last_mtime:
+                del loader_cache[p]
+
+        if extra_config_path:
+            _ = loader_cache.pop(str(extra_config_path), None)
+
+        fluff_conf = FluffConfig.from_path(
+            path=str(path or self.project_root),
+            extra_config_path=str(extra_config_path) if extra_config_path else None,
+            ignore_local_config=ignore_local_config,
+            overrides=overrides,
+        )
+
+        for p in loader_cache:
+            p_obj = Path(p)
+            self._sqlfluff_mtime_cache[p_obj] = p_obj.stat().st_mtime if p_obj.exists() else 0.0
+
+        return fluff_conf
+
+    def lint(
+        self,
+        sql: Path | str | None = None,
+        extra_config_path: Path | str | None = None,
+        ignore_local_config: bool = False,
+        fluff_conf: FluffConfig | None = None,
+    ) -> LintingRecord | None:
+        """Lint specified file or SQL string."""
+        from sqlfluff.cli.commands import get_linter_and_formatter
+
+        fluff_conf = fluff_conf or self.get_sqlfluff_configuration(
+            sql if isinstance(sql, Path) else None,
+            extra_config_path,
+            ignore_local_config,
+            require_dialect=False,
+            nocolor=True,
+        )
+        lint, _ = get_linter_and_formatter(fluff_conf)
+
+        if sql is None:
+            # TODO: lint whole project
+            return
+        elif isinstance(sql, str):
+            result = lint.lint_string_wrapped(sql)
+        else:
+            result = lint.lint_paths((str(sql),), ignore_files=False)
+
+        records = result.as_records()
+        return records[0] if records else None
+
+    def format(
+        self,
+        sql: Path | str | None = None,
+        extra_config_path: Path | None = None,
+        ignore_local_config: bool = False,
+        fluff_conf: FluffConfig | None = None,
+    ) -> tuple[bool, str | None]:
+        """Format specified file or SQL string."""
+        from sqlfluff.cli.commands import get_linter_and_formatter
+        from sqlfluff.core import SQLLintError
+
+        logger.info(f"""format_command(
+        {self.project_root},
+        {str(sql)[:100]},
+        {extra_config_path},
+        {ignore_local_config})
+        """)
+
+        fluff_conf = fluff_conf or self.get_sqlfluff_configuration(
+            sql if isinstance(sql, Path) else None,
+            extra_config_path,
+            ignore_local_config,
+            require_dialect=False,
+            nocolor=True,
+            rules=(
+                # all of the capitalisation rules
+                "capitalisation,"
+                # all of the layout rules
+                "layout,"
+                # safe rules from other groups
+                "ambiguous.union,"
+                "convention.not_equal,"
+                "convention.coalesce,"
+                "convention.select_trailing_comma,"
+                "convention.is_null,"
+                "jinja.padding,"
+                "structure.distinct,"
+            ),
+        )
+        lint, formatter = get_linter_and_formatter(fluff_conf)
+
+        result_sql = None
+        if sql is None:
+            # TODO: format whole project
+            return True, result_sql
+        if isinstance(sql, str):
+            logger.info(f"Formatting SQL string: {sql[:100]}")
+            result = lint.lint_string_wrapped(sql, fname="stdin", fix=True)
+            _, num_filtered_errors = result.count_tmp_prs_errors()
+            result.discard_fixes_for_lint_errors_in_files_with_tmp_or_prs_errors()
+            success = not num_filtered_errors
+            if success:
+                num_fixable = result.num_violations(types=SQLLintError, fixable=True)
+                if num_fixable > 0:
+                    logger.info(f"Fixing {num_fixable} errors in SQL string")
+                    result_sql = result.paths[0].files[0].fix_string()[0]
+                    logger.info(f"Result string has changes? {result_sql != sql}")
+                else:
+                    logger.info("No fixable errors in SQL string")
+                    result_sql = sql
+        else:
+            logger.info(f"Formatting SQL file: {sql}")
+            before_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            logger.info(f"Before fixing, modified: {before_modified}")
+            lint_result = lint.lint_paths(
+                (str(sql),),
+                fix=True,
+                ignore_non_existent_files=False,
+                apply_fixes=True,
+                fix_even_unparsable=False,
+            )
+            _, num_filtered_errors = lint_result.count_tmp_prs_errors()
+            lint_result.discard_fixes_for_lint_errors_in_files_with_tmp_or_prs_errors()
+            success = not num_filtered_errors
+            num_fixable = lint_result.num_violations(types=SQLLintError, fixable=True)
+            if num_fixable > 0:
+                logger.info(f"Fixing {num_fixable} errors in SQL file")
+                res = lint_result.persist_changes(formatter=formatter)
+                after_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                logger.info(f"After fixing, modified: {after_modified}")
+                logger.info(
+                    f"File modification time has changes? {before_modified != after_modified}"
+                )
+                success = all(res.values())  # pyright: ignore[reportUnknownArgumentType]
+            else:
+                logger.info("No fixable errors in SQL file")
+
+        logger.info(
+            f"format_command returning success={success}, result_sql={result_sql[:100] if result_sql is not None else 'n/a'}"
+        )
+        return success, result_sql
+
 
 @t.final
 class DbtProjectWatcher:
@@ -731,44 +901,131 @@ class DbtProjectWatcher:
         return changes_detected
 
 
-# Import protection for optional dependencies
-try:
-    from dbt_core_interface.sqlfluff_util import format_command, lint_command
+@t.final
+class DbtProjectContainer:
+    """Singleton container for managing multiple DbtProject instances."""
 
-    HAS_SQLFLUFF = True
-except ImportError:
-    HAS_SQLFLUFF = False  # pyright: ignore[reportConstantRedefinition]
+    _instance: DbtProjectContainer | None = None
+    _instance_lock: threading.Lock = threading.Lock()
 
+    def __new__(cls) -> DbtProjectContainer:
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialize()
+            return cls._instance
 
-def get_manifest_info_for_sqlfluff(project: DbtProject) -> dict[str, t.Any]:
-    """Extract manifest information needed for sqlfluff integration."""
-    if not project.manifest:
-        return {}
+    def _initialize(self) -> None:
+        self._projects: dict[str, DbtProject] = {}  # pyright: ignore[reportUninitializedInstanceVariable]
+        self._default_project: str | None = None  # pyright: ignore[reportUninitializedInstanceVariable]
+        self._lock = threading.RLock()  # pyright: ignore[reportUninitializedInstanceVariable]
 
-    info = {"models": {}, "sources": {}, "macros": {}}
+    def get_project(self, name: str) -> DbtProject | None:
+        """Return the project registered under the given name, or None if not found."""
+        with self._lock:
+            return self._projects.get(name)
 
-    for node in project.manifest.nodes.values():
-        if node.resource_type == NodeType.Model:
-            info["models"][node.name] = {
-                "database": node.database,
-                "schema": node.schema,
-                "alias": node.alias,
-                "columns": getattr(node, "columns", {}),
-            }
+    def get_project_by_path(self, path: str | Path) -> DbtProject | None:
+        """Return the project whose root is at or above the given path."""
+        p = Path(path).resolve()
+        with self._lock:
+            for project in self._projects.values():
+                root = project.project_root.resolve()
+                if p == root or root in p.parents:
+                    return project
+        return None
 
-    for node in project.manifest.sources.values():
-        source_key = f"{node.source_name}.{node.name}"
-        info["sources"][source_key] = {
-            "database": node.database,
-            "schema": node.schema,
-            "identifier": node.identifier,
-            "columns": getattr(node, "columns", {}),
-        }
+    def get_default_project(self) -> DbtProject | None:
+        """Return the default project (first added), or None if no projects exist."""
+        with self._lock:
+            if self._default_project is None:
+                return None
+            return self._projects.get(self._default_project)
 
-    for macro in project.manifest.macros.values():
-        info["macros"][macro.name] = {
-            "package_name": macro.package_name,
-            "arguments": getattr(macro, "arguments", []),
-        }
+    def set_default_project(self, name: str) -> None:
+        """Set the default project by name."""
+        self._default_project = name
 
-    return info
+    def add_project(
+        self,
+        target: str | None = None,
+        profiles_dir: str | None = None,
+        project_dir: str | None = None,
+        threads: int = 1,
+        vars: dict[str, t.Any] | None = None,
+        name_override: str = "",
+    ) -> DbtProject:
+        """Instantiate and register a new DbtProject."""
+        project = DbtProject(
+            target=target,
+            profiles_dir=profiles_dir,
+            project_dir=project_dir,
+            threads=threads,
+            vars=vars or {},
+        )
+        name = name_override or project.project_name
+        with self._lock:
+            if name in self._projects:
+                raise ValueError(f"Project '{name}' is already registered.")
+            self._projects[name] = project
+            if self._default_project is None:
+                self._default_project = name
+        return project
+
+    def add_project_from_config(self, config: DbtConfiguration) -> DbtProject:
+        """Instantiate a project from configuration and register it."""
+        project = DbtProject.from_config(config)
+        name = project.project_name
+        with self._lock:
+            _ = self._projects.setdefault(name, project)
+            if self._default_project is None:
+                self._default_project = name
+        return project
+
+    def drop_project(self, name: str) -> None:
+        """Unregister and clean up the project with the given name."""
+        with self._lock:
+            project = self._projects.pop(name, None)
+            if project is None:
+                return
+            project.adapter.connections.cleanup_all()
+            if name == self._default_project:
+                self._default_project = next(iter(self._projects), None)
+
+    def drop_all(self) -> None:
+        """Unregister and clean up all projects."""
+        with self._lock:
+            for name in list(self._projects):
+                self.drop_project(name)
+
+    def reparse_all(self) -> None:
+        """Re-parse all registered projects safely."""
+        with self._lock:
+            for project in self._projects.values():
+                project.parse_project()
+
+    def registered_projects(self) -> list[str]:
+        """Return a list of registered project names."""
+        with self._lock:
+            return list(self._projects.keys())
+
+    def __len__(self) -> int:
+        return len(self._projects)
+
+    def __getitem__(self, name: str) -> DbtProject:
+        project = self.get_project(name)
+        if project is None:
+            raise KeyError(f"No project registered under '{name}'.")
+        return project
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._projects
+
+    def __iter__(self) -> t.Generator[DbtProject, None, None]:
+        yield from self._projects.values()
+
+    def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
+        return "\n".join(
+            f"DbtProject(name={proj.project_name}, root={proj.project_root})"
+            for proj in self._projects.values()
+        )
