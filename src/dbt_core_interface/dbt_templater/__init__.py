@@ -1,5 +1,5 @@
-"""Defines the hook endpoints for the dbt templater plugin."""
 # pyright: reportAny=false
+"""Defines the hook endpoints for the dbt templater plugin."""
 
 import typing as t
 

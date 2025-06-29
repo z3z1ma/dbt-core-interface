@@ -1,5 +1,5 @@
-"""Specialized dbt templater for embedding in the dbt-core-interface server."""
 # pyright: reportImplicitOverride=false, reportAny=false, reportMissingTypeStubs=false, reportUnknownMemberType=false
+"""Specialized dbt templater for embedding in the dbt-core-interface server."""
 
 from __future__ import annotations
 

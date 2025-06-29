@@ -28,7 +28,13 @@ Documentation = "https://dbt-core-interface.readthedocs.io"
 Changelog = "https://github.com/z3z1ma/dbt-core-interface/releases"
 
 [project.optional-dependencies]
-sqlfluff = ["sqlfluff>=2.3.2,<=3.1.1"]
+sqlfluff = [
+  "sqlfluff>=2.3.2,<=3.1.1"
+]
+server = [
+  "fastapi~=0.115.14",
+  "uvicorn~=0.35.0"
+]
 dev = [
   "ruff~=0.12.0",
   "coverage[toml]>=6.2,<7",
@@ -82,7 +88,7 @@ exclude = [
   "venv",
   "dbt_core_interface.py",
 ]
-per-file-ignores = { "tests/*" = ["S101"], "src/dbt_core_interface/project.py" = ["E402"] }
+per-file-ignores = { "tests/*" = ["S101"], "src/dbt_core_interface/project.py" = ["E402"], "src/dbt_core_interface/server.py" = ["B008"] }
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 target-version = "py310"
 
