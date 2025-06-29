@@ -5,10 +5,10 @@ import typing as t
 
 from sqlfluff.core.plugin import hookimpl
 
-from dbt_core_interface.dbt_templater.templater import DCIDbtTemplater
+from dbt_core_interface.dbt_templater.templater import DbtTemplater
 
 
 @hookimpl
-def get_templaters() -> list[t.Callable[..., DCIDbtTemplater]]:
+def get_templaters() -> list[t.Callable[..., DbtTemplater]]:
     """Register the dbt-core-interface templater."""
-    return [DCIDbtTemplater]
+    return [DbtTemplater]

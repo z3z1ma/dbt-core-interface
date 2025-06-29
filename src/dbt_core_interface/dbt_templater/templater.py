@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import os.path
 import typing as t
+from contextlib import suppress
 from functools import cached_property
 
 from dbt_common.exceptions import CompilationError as DbtCompilationException
@@ -22,18 +22,8 @@ if t.TYPE_CHECKING:
     from sqlfluff.core import FluffConfig
 
 
-templater_logger = logging.getLogger("sqlfluff.templater")
-
-
-def is_dbt_exception(exception: BaseException | None) -> bool:
-    """Check whether this looks like a dbt exception."""
-    if not exception:
-        return False
-    return exception.__class__.__module__.startswith("dbt")
-
-
 @t.final
-class DCIDbtTemplater(JinjaTemplater):
+class DbtTemplater(JinjaTemplater):
     """dbt templater for dbt-core-interface, based on sqlfluff-templater-dbt."""
 
     name: str = "dbt"
@@ -44,13 +34,7 @@ class DCIDbtTemplater(JinjaTemplater):
 
     @cached_property
     def _dbt_version(self) -> VersionSpecifier:
-        """Fetches the installed dbt version.
-
-        This is cached in the raw dbt format.
-
-        NOTE: We do this only on demand to reduce the amount of loading
-        required to discover the templater.
-        """
+        """Fetches the installed dbt version."""
         from dbt.version import get_installed_version
 
         return get_installed_version()
@@ -127,6 +111,9 @@ class DCIDbtTemplater(JinjaTemplater):
                 if node is None:
                     raise SQLFluffSkipFile(f"Skipped file {fname} because it is not a dbt node.")
 
+                with suppress(Exception):
+                    config = dbt_project.get_sqlfluff_configuration(fname)
+
                 def render_func(in_str: str) -> str:
                     """Render a dbt node."""
                     node_sql = node.raw_code
@@ -159,11 +146,6 @@ class DCIDbtTemplater(JinjaTemplater):
             n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
         else:
             n_trailing_newlines = 0
-
-        templater_logger.debug(
-            "    Trailing newline count in source dbt model: %r",
-            n_trailing_newlines,
-        )
 
         raw_sliced, sliced_file, templated_sql = self.slice_file(
             source_dbt_sql,

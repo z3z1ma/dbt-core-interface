@@ -63,7 +63,7 @@ disable_tracking()
 set_invocation_context(get_env())
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(rich.logging.RichHandler())
 
 add_logger_to_manager(
@@ -108,9 +108,9 @@ class DbtConfiguration:
 
     single_threaded: bool = True
     quiet: bool = True
-    use_experimental_parser: bool = False
-    static_parser: bool = False
-    partial_parse: bool = False
+    use_experimental_parser: bool = True
+    static_parser: bool = True
+    partial_parse: bool = True
 
     dependencies: list[str] = field(default_factory=list)
     which: str = "zezima was here"
@@ -201,7 +201,7 @@ class DbtProject:
         )
 
         if load:
-            self.parse_project()
+            self.parse_project(write_manifest=True)
 
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the DbtProject instance."""
@@ -372,6 +372,9 @@ class DbtProject:
 
         with self._manifest_lock:
             self.__manifest_loader.manifest = Manifest()
+            self.__manifest_loader.manifest.state_check = (
+                self.__manifest_loader.build_manifest_state_check()
+            )
             self._manifest = self.__manifest_loader.saved_manifest = self.__manifest_loader.load()
             self._manifest.build_flat_graph()
             self._manifest.build_parent_and_child_maps()
@@ -383,10 +386,10 @@ class DbtProject:
             self.__manifest_loader.save_macros_to_adapter(self.adapter)
             self.__compilation_cache.clear()
 
-        logger.info(f"Parsed project: {self.project_name}")
-        if write_manifest:
-            self.write_manifest()
+            if write_manifest:
+                self.write_manifest()
 
+        logger.info(f"Parsed project: {self.project_name}")
         self._last_parsed_at = time.time()
 
     def parse_paths(self, *paths: Path | str) -> None:
