@@ -3,7 +3,6 @@
 /.coverage
 /.coverage.*
 /.nox/
-/.python-version
 /.pytype/
 /.cookiecutter.json
 /dist/

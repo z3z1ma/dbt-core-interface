@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# pyright: reportDeprecated=false,reportPrivateImportUsage=false,reportAny=false,reportUnknownMemberType=false,reportUnknownVariableType=false,reportUnnecessaryComparison=false
+# pyright: reportDeprecated=false,reportPrivateImportUsage=false,reportAny=false,reportUnknownMemberType=false,reportUnknownVariableType=false,reportUnnecessaryComparison=false, reportUnreachable=false
 """Minimal dbt-core interface for in-memory manifest management and SQL execution."""
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import shlex
+import sys
 import threading
 import time
 import typing as t
@@ -73,7 +74,13 @@ add_logger_to_manager(
 __all__ = ["DbtProject", "DbtConfiguration", "ExecutionResult", "CompilationResult"]
 
 T = t.TypeVar("T")
-P = t.ParamSpec("P")
+
+if sys.version_info >= (3, 10):
+    P = t.ParamSpec("P")
+else:
+    import typing_extensions as t_ext
+
+    P = t_ext.ParamSpec("P")
 
 
 def _get_project_dir() -> Path:
@@ -117,7 +124,12 @@ class DbtConfiguration:
     REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES: bool = field(default_factory=bool)
 
 
-@dataclass(frozen=True, slots=True)
+_use_slots = {}
+if sys.version_info >= (3, 10):
+    _use_slots = {"slots": True}
+
+
+@dataclass(frozen=True, **_use_slots)
 class ExecutionResult:
     """Result of SQL execution."""
 
@@ -127,7 +139,7 @@ class ExecutionResult:
     compiled_code: str
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, **_use_slots)
 class CompilationResult:
     """Result of SQL compilation."""
 

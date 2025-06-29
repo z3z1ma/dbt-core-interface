@@ -3,7 +3,6 @@ name: Tests
 on:
   workflow_dispatch:
   push:
-  pull_request:
 
 jobs:
   tests:
@@ -26,33 +25,22 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4.1.7
 
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5.1.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          version: "0.7.17"
           python-version: ${{ matrix.python }}
 
-      - name: Upgrade pip
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run tests
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
-          pip --version
-
-      - name: Upgrade pip in virtual environments
-        shell: python
-        run: |
-          import os
-          import pip
-
-          with open(os.environ["GITHUB_ENV"], mode="a") as io:
-              print(f"VIRTUALENV_PIP={pip.__version__}", file=io)
-
-      - name: Run Tests
-        run: |
-          make test-dbt${{ matrix.dbt }}
-
-      # TODO: Upload docs
-      # - name: Upload documentation
-      #   if: matrix.session == 'docs-build'
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: docs
-      #     path: docs/_build
+          uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project dbt deps
+          uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project2 dbt deps
+          uv run pytest tests/test_main.py tests/sqlfluff_templater/linter_test.py
