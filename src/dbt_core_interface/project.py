@@ -64,7 +64,7 @@ disable_tracking()
 set_invocation_context(get_env())
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(rich.logging.RichHandler())
 
 add_logger_to_manager(

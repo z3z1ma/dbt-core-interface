@@ -578,10 +578,6 @@ def main() -> None:
 
     import uvicorn
 
-    logging.basicConfig(level=logging.ERROR)
-    log = logging.getLogger("dbt_core_interface")
-    log.setLevel(logging.INFO)
-
     parser = argparse.ArgumentParser(description="Run the dbt-core-interface server.")
     _ = parser.add_argument(
         "--host",
@@ -600,6 +596,10 @@ def main() -> None:
         help="Uvicorn log level (debug, info, warning, error, critical)",
     )
     args = parser.parse_args()
+
+    if args.log_level.upper() == "DEBUG":
+        log = logging.getLogger("dbt_core_interface")
+        log.setLevel(logging.DEBUG)
 
     uvicorn.run(
         "dbt_core_interface.server:app",
