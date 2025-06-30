@@ -36,6 +36,7 @@ from dbt_core_interface.project import (
     DbtConfiguration,
     DbtProject,
     DbtProjectContainer,
+    DbtProjectWatcher,
     ExecutionResult,
 )
 
@@ -178,11 +179,18 @@ def _save_state(runners: DbtProjectContainer) -> None:
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
     _ = app
-    _load_saved_state(get_container())
+    _load_saved_state(container := get_container())
+    app.state.watchers = watchers = t.cast(dict[str, DbtProjectWatcher], {})
+    for project in container:
+        watcher = project.create_project_watcher()
+        watcher.start()
+        watchers[str(project.project_root)] = watcher
     try:
         yield
     finally:
-        _save_state(get_container())
+        _save_state(container)
+        for watcher in watchers.values():
+            watcher.stop()
 
 
 app = FastAPI(
@@ -246,28 +254,26 @@ def format_run_result(res: ExecutionResult) -> ServerRunResult:
     )
 
 
-@app.post("/run", response_model=ServerRunResult)
+@app.post("/run")
 def run_sql(
     response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
     limit: int = Query(200, ge=1),
     path: str | None = Query(None),
     runner: DbtProject = Depends(get_runner),
-) -> ServerRunResult:
+) -> ServerRunResult | ServerErrorContainer:
     """Run raw SQL code against the registered dbt project."""
     _ = response
     if path:
         node = runner.get_node_by_path(path)
         if not node:
-            raise HTTPException(
-                status_code=404,
-                detail=ServerErrorContainer(
-                    error=ServerError(
-                        code=ServerErrorCode.MissingRequiredParams,
-                        message=f"Model path not found in dbt manifest: {path}",
-                        data={},
-                    )
-                ).model_dump(),
+            response.status_code = 404
+            return ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.MissingRequiredParams,
+                    message=f"Model path not found in dbt manifest: {path}",
+                    data={},
+                )
             )
         orig_raw_sql = node.raw_code
         try:
@@ -281,39 +287,36 @@ def run_sql(
         query = f"SELECT * FROM (\n{raw_sql}\n) AS __server_query LIMIT {limit}"  # noqa: S608
         exec_res = runner.execute_sql(query, compile=path is None)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.ExecuteSqlFailure,
-                    message=str(e),
-                    data=getattr(e, "__dict__", {}),
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
     return format_run_result(exec_res)
 
 
-@app.post("/compile", response_model=ServerCompileResult)
+@app.post("/compile")
 def compile_sql(
+    response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
     path: str | None = Query(None),
     runner: DbtProject = Depends(get_runner),
-) -> ServerCompileResult:
+) -> ServerCompileResult | ServerErrorContainer:
     """Compile raw SQL code without executing it."""
     try:
         if path:
             node = runner.get_node_by_path(path)
             if not node:
-                raise HTTPException(
-                    status_code=404,
-                    detail=ServerErrorContainer(
-                        error=ServerError(
-                            code=ServerErrorCode.MissingRequiredParams,
-                            message=f"Model path not found: {path}",
-                            data={},
-                        )
-                    ).model_dump(),
+                response.status_code = 404
+                return ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.MissingRequiredParams,
+                        message=f"Model path not found: {path}",
+                        data={},
+                    )
                 )
             orig_raw_sql = node.raw_code
             try:
@@ -326,94 +329,92 @@ def compile_sql(
             comp_res = runner.compile_sql(raw_sql)
             result_sql = comp_res.compiled_code
     except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.CompileSqlFailure,
-                    message=str(e),
-                    data=getattr(e, "__dict__", {}),
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 400
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.CompileSqlFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
     return ServerCompileResult(result=result_sql)
 
 
-@app.post("/register", response_model=ServerRegisterResult)
+@app.post("/register")
 def register_project(
+    response: Response,
     project: str = Header(None, alias="X-dbt-Project"),
     profiles_dir: str | None = Query(None),
     project_dir: str | None = Query(None),
     target: str | None = Query(None),
     runners: DbtProjectContainer = Depends(get_container),
-) -> ServerRegisterResult:
+) -> ServerRegisterResult | ServerErrorContainer:
     """Register a new dbt project with the server."""
     if not project:
-        raise HTTPException(
-            status_code=400,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.ProjectHeaderNotSupplied,
-                    message="Header X-dbt-Project is required for registration.",
-                    data={},
-                )
-            ).model_dump(),
+        response.status_code = 400
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectHeaderNotSupplied,
+                message="Header X-dbt-Project is required for registration.",
+                data={},
+            )
         )
     if project in runners.registered_projects():
         return ServerRegisterResult(added=project, projects=runners.registered_projects())
     try:
-        _ = runners.add_project(
+        dbt_project = runners.add_project(
             target=target,
             profiles_dir=profiles_dir,
             project_dir=project_dir,
             name_override=project,
         )
         _save_state(runners)
+        watcher = dbt_project.create_project_watcher()
+        watcher.start()
+        app.state.watchers[str(dbt_project.project_root)] = watcher
     except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.ProjectParseFailure,
-                    message=str(e),
-                    data=getattr(e, "__dict__", {}),
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 400
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
     return ServerRegisterResult(added=project, projects=runners.registered_projects())
 
 
-@app.post("/unregister", response_model=ServerUnregisterResult)
+@app.post("/unregister")
 def unregister_project(
+    response: Response,
     project: str = Header(None, alias="X-dbt-Project"),
     runners: DbtProjectContainer = Depends(get_container),
-) -> ServerUnregisterResult:
+) -> ServerUnregisterResult | ServerErrorContainer:
     """Remove a registered dbt project from the server."""
     if not project or project not in runners.registered_projects():
-        raise HTTPException(
-            status_code=400,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.ProjectNotRegistered,
-                    message="Project not registered; register first.",
-                    data={"registered_projects": runners.registered_projects()},
-                )
-            ).model_dump(),
+        response.status_code = 400
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectNotRegistered,
+                message="Project not registered; register first.",
+                data={"registered_projects": runners.registered_projects()},
+            )
         )
     runners.drop_project(project)
     _save_state(runners)
     return ServerUnregisterResult(removed=project, projects=runners.registered_projects())
 
 
-@app.get("/parse", response_model=ServerResetResult)
-@app.get("/reset", response_model=ServerResetResult)
+@app.get("/parse")
+@app.get("/reset")
 def reset_project(
+    response: Response,
     background_tasks: BackgroundTasks,
     target: str | None = Query(None),
     reset: bool = Query(False),
     write_manifest: bool = Query(False),
     runner: DbtProject = Depends(get_runner),
-) -> ServerResetResult:
+) -> ServerResetResult | ServerErrorContainer:
     """Re-parse the dbt project configuration and manifest."""
     _ = background_tasks
     sync = False
@@ -428,16 +429,14 @@ def reset_project(
         else:
             background_tasks.add_task(runner.parse_project, write_manifest=write_manifest)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.ProjectParseFailure,
-                    message=str(e),
-                    data=getattr(e, "__dict__", {}),
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
     return ServerResetResult(result="Project re-parsed successfully.")
 
 
@@ -478,13 +477,14 @@ class ServerFormatResult(BaseModel):
     sql: str | None
 
 
-@app.post("/lint", response_model=ServerLintResult)
+@app.post("/lint")
 def lint_sql(
+    response: Response,
     sql_path: str | None = Query(None),
     extra_config_path: str | None = Query(None),
     raw_sql: str | None = Body(None, media_type="text/plain"),
     runner: DbtProject = Depends(get_runner),
-) -> ServerLintResult:
+) -> ServerLintResult | ServerErrorContainer:
     """Lint SQL string or file via SQLFluff."""
     record = None
     try:
@@ -495,43 +495,38 @@ def lint_sql(
             )
         else:
             if not raw_sql:
-                raise HTTPException(
-                    status_code=400,
-                    detail=ServerErrorContainer(
-                        error=ServerError(
-                            code=ServerErrorCode.MissingRequiredParams,
-                            message="No SQL provided. Provide sql_path or SQL body.",
-                            data={},
-                        )
-                    ).model_dump(),
+                response.status_code = 400
+                return ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.MissingRequiredParams,
+                        message="No SQL provided. Provide sql_path or SQL body.",
+                        data={},
+                    )
                 )
             record = runner.lint(
                 sql=raw_sql,
                 extra_config_path=Path(extra_config_path) if extra_config_path else None,
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.CompileSqlFailure,
-                    message=str(e),
-                    data={},
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.CompileSqlFailure,
+                message=str(e),
+                data={},
+            )
+        )
     return ServerLintResult(result=record["violations"] if record is not None else [])  # pyright: ignore[reportUnknownArgumentType]
 
 
-@app.post("/format", response_model=ServerFormatResult)
+@app.post("/format")
 def format_sql(
+    response: Response,
     sql_path: str | None = Query(None),
     extra_config_path: str | None = Query(None),
     raw_sql: str | None = Body(None, media_type="text/plain"),
     runner: DbtProject = Depends(get_runner),
-) -> ServerFormatResult:
+) -> ServerFormatResult | ServerErrorContainer:
     """Format SQL string or file via SQLFluff."""
     try:
         if sql_path:
@@ -541,33 +536,27 @@ def format_sql(
             )
         else:
             if not raw_sql:
-                raise HTTPException(
-                    status_code=400,
-                    detail=ServerErrorContainer(
-                        error=ServerError(
-                            code=ServerErrorCode.MissingRequiredParams,
-                            message="No SQL provided. Provide sql_path or SQL body.",
-                            data={},
-                        )
-                    ).model_dump(),
+                response.status_code = 400
+                return ServerErrorContainer(
+                    error=ServerError(
+                        code=ServerErrorCode.MissingRequiredParams,
+                        message="No SQL provided. Provide sql_path or SQL body.",
+                        data={},
+                    )
                 )
             success, formatted = runner.format(
                 sql=raw_sql,
                 extra_config_path=Path(extra_config_path) if extra_config_path else None,
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.CompileSqlFailure,
-                    message=str(e),
-                    data={},
-                )
-            ).model_dump(),
-        ) from e
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.CompileSqlFailure,
+                message=str(e),
+                data={},
+            )
+        )
     return ServerFormatResult(result=success, sql=formatted)
 
 
