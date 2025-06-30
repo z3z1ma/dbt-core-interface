@@ -174,6 +174,7 @@ class DbtProject:
         threads: int = 1,
         vars: dict[str, t.Any] | None = None,
         load: bool = True,
+        autoregister: bool = True,
     ) -> None:
         """Initialize the dbt project."""
         if project_dir is not None and profiles_dir is None:
@@ -214,6 +215,13 @@ class DbtProject:
 
         if load:
             self.parse_project(write_manifest=True)
+
+        if autoregister:
+            container = DbtProjectContainer()
+            container._projects[str(self.project_root)] = self  # pyright: ignore[reportPrivateUsage]
+            container._projects[self.project_name] = self  # pyright: ignore[reportPrivateUsage]
+            if container.get_default_project() is None:
+                container.set_default_project(self.project_name)
 
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the DbtProject instance."""
@@ -650,6 +658,7 @@ class DbtProject:
 
         overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
         overrides["dialect"] = self.runtime_config.credentials.type
+        overrides["processes"] = 1
 
         loader = ConfigLoader.get_global()
         loader_cache = loader._config_cache  # pyright: ignore[reportPrivateUsage]
