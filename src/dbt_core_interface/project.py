@@ -17,7 +17,7 @@ import time
 import typing as t
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
@@ -719,6 +719,7 @@ class DbtProject:
             if path == Path.home() or path == path.root:
                 break
 
+        explicit_conf = None
         if extra_config_path:
             explicit_conf = Path(extra_config_path).expanduser().resolve()
             if explicit_conf.exists():
@@ -740,7 +741,9 @@ class DbtProject:
 
         fluff_conf = sqlfluff_config.FluffConfig.from_path(
             path=str(path),
-            extra_config_path=str(extra_config_path) if extra_config_path else None,
+            extra_config_path=str(explicit_conf)
+            if explicit_conf and explicit_conf.exists()
+            else None,
             ignore_local_config=ignore_local_config,
             overrides=overrides,
         )
@@ -864,7 +867,7 @@ class DbtProject:
                 logger.info(
                     f"File modification time has changes? {before_modified != after_modified}"
                 )
-                success = all(res.values())  # pyright: ignore[reportUnknownArgumentType]
+                success = all(res.values())
             else:
                 logger.info("No fixable errors in SQL file")
 

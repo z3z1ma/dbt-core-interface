@@ -13,7 +13,7 @@ from dbt_common.exceptions import CompilationError as DbtCompilationException
 from sqlfluff.core.errors import SQLFluffSkipFile, SQLTemplaterError
 from sqlfluff.core.templaters.base import (
     TemplatedFile,
-    large_file_check,  # pyright: ignore[reportUnknownVariableType]
+    large_file_check,
 )
 from sqlfluff.core.templaters.jinja import JinjaTemplater
 
