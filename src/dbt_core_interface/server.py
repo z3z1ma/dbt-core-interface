@@ -154,14 +154,14 @@ def _save_state(runners: DbtProjectContainer) -> None:
     """Persist all registered projects to disk."""
     path = _get_state_file_path()
     state: list[dict[str, t.Any]] = []
-    for name in runners.registered_projects():
-        proj = runners.get_project(name)
+    for path in runners.registered_projects():
+        proj = runners.get_project(path)
         if not proj:
             continue
         cfg = proj.args
         state.append(
             {
-                "project": name,
+                "project": proj.project_name,
                 "project_dir": cfg.project_dir,
                 "profiles_dir": cfg.profiles_dir,
                 "target": cfg.target,
@@ -181,17 +181,13 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
     _ = app
     _load_saved_state(container := get_container())
-    app.state.watchers = watchers = t.cast(dict[int, DbtProjectWatcher], {})
     for project in container:
-        watcher = DbtProjectWatcher(project)
-        watcher.start()
-        watchers[id(project)] = watcher
+        _ = DbtProjectWatcher(project, start=True)
     try:
         yield
     finally:
         _save_state(container)
-        for watcher in watchers.values():
-            watcher.stop()
+        _ = DbtProjectWatcher.stop_all()
 
 
 app = FastAPI(
@@ -374,7 +370,6 @@ def register_project(
         _save_state(runners)
         watcher = DbtProjectWatcher(dbt_project)
         watcher.start()
-        app.state.watchers[id(dbt_project)] = watcher
     except Exception as e:
         response.status_code = 400
         return ServerErrorContainer(
@@ -396,8 +391,11 @@ def unregister_project(
     runners: DbtProjectContainer = Depends(get_container),
 ) -> ServerUnregisterResult | ServerErrorContainer:
     """Remove a registered dbt project from the server."""
-    project_path = Path(project).expanduser().resolve()
-    if not project or project_path not in runners.registered_projects():
+    if (
+        not project
+        or (project_path := Path(project).expanduser().resolve())
+        not in runners.registered_projects()
+    ):
         response.status_code = 400
         return ServerErrorContainer(
             error=ServerError(
@@ -406,11 +404,10 @@ def unregister_project(
                 data={"registered_projects": list(map(str, runners.registered_projects()))},
             )
         )
-    dbt_project = runners.drop_project(project)
+    dbt_project = runners.drop_project(project_path)
     _save_state(runners)
-    watcher = app.state.watchers.pop(id(dbt_project), None)
-    if watcher:
-        watcher.stop()
+    if dbt_project:
+        DbtProjectWatcher.stop_path(dbt_project.project_root)
     return ServerUnregisterResult(
         removed=project, projects=list(map(str, runners.registered_projects()))
     )

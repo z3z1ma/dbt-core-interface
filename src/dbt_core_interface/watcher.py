@@ -24,8 +24,27 @@ logger = logging.getLogger(__name__)
 class DbtProjectWatcher:
     """Watch dbt files for changes and automatically update the manifest."""
 
-    def __init__(self, project: DbtProject, check_interval: float = 2.0) -> None:
+    _instances: dict[int, DbtProjectWatcher] = {}
+    _instance_lock: threading.Lock = threading.Lock()
+
+    def __new__(
+        cls, project: DbtProject, check_interval: float = 2.0, start: bool = False
+    ) -> DbtProjectWatcher:
+        """Ensure only one instance of DbtProjectWatcher per project root."""
+        with cls._instance_lock:
+            watcher = cls._instances.get(id(project))
+            if not watcher:
+                watcher = super().__new__(cls)
+                cls._instances[id(project)] = watcher
+        return watcher
+
+    def __init__(
+        self, project: DbtProject, check_interval: float = 2.0, start: bool = False
+    ) -> None:
         """Initialize the project watcher."""
+        if hasattr(self, "_project"):
+            return
+
         self._project = project
         self.check_interval = check_interval
 
@@ -40,6 +59,9 @@ class DbtProjectWatcher:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
+        if start:
+            self.start()
+
     def start(self) -> None:
         """Start monitoring files for changes."""
         if self._running:
@@ -49,7 +71,7 @@ class DbtProjectWatcher:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
-        logger.info("Project watcher started")
+        logger.info("Project watcher started for %s", self._project.project_root)
 
     def stop(self) -> None:
         """Stop monitoring files."""
@@ -60,7 +82,7 @@ class DbtProjectWatcher:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5.0)
-        logger.info("Project watcher stopped")
+        logger.info("Project watcher stopped for %s", self._project.project_root)
 
     def _monitor_loop(self) -> None:
         """Run the main monitoring loop."""
@@ -132,3 +154,48 @@ class DbtProjectWatcher:
                 continue
 
         return changes_detected
+
+    @classmethod
+    def stop_all(cls) -> int:
+        """Stop all active watchers and clear the instances."""
+        stopped = 0
+        with cls._instance_lock:
+            for watcher in cls._instances.values():
+                if watcher._running:
+                    watcher.stop()
+                    stopped += 1
+            cls._instances.clear()
+            logger.info("All project watchers stopped")
+        return stopped
+
+    @classmethod
+    def stop_project(cls, project: DbtProject) -> None:
+        """Stop the watcher for a specific project."""
+        with cls._instance_lock:
+            watcher = cls._instances.pop(id(project), None)
+            if watcher:
+                if watcher._running:
+                    watcher.stop()
+                else:
+                    logger.warning(f"Watcher for project {project.project_name} is not running.")
+            else:
+                logger.warning(f"No watcher found for project {project.project_name}")
+
+    @classmethod
+    def stop_path(cls, path: Path | str) -> None:
+        """Stop the watcher for a specific project path."""
+        with cls._instance_lock:
+            path = Path(path).expanduser().resolve()
+            for project in (w._project for w in cls._instances.values()):
+                project_path = project.project_root
+                if path == project_path or project_path in path.parents:
+                    watcher = cls._instances.pop(id(project))
+                    watcher.stop()
+                else:
+                    logger.warning(f"No watcher found for project at {path}")
+
+    @classmethod
+    def active_watchers(cls) -> list[DbtProjectWatcher]:
+        """Return a list of currently active project paths being watched."""
+        with cls._instance_lock:
+            return list(cls._instances.values())

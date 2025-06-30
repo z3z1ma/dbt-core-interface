@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import typing as t
 from collections.abc import Generator
@@ -12,6 +13,8 @@ if t.TYPE_CHECKING:
     from dbt_core_interface.project import DbtConfiguration, DbtProject
 
 __all__ = ["DbtProjectContainer"]
+
+logger = logging.getLogger(__name__)
 
 
 @t.final
@@ -45,7 +48,7 @@ class DbtProjectContainer:
                 root = project.project_root.resolve()
                 if p == root or root in p.parents:
                     return project
-        return None
+        logger.debug("No project found in tree for path '%s'.", p)
 
     def get_default_project(self) -> DbtProject | None:
         """Return the default project (first added), or None if no projects exist."""
@@ -57,6 +60,7 @@ class DbtProjectContainer:
     def set_default_project(self, path: Path | str) -> None:
         """Set the default project by name."""
         self._default_project = Path(path).expanduser().resolve()
+        logger.debug("Default project set to '%s'.", self._default_project)
 
     def add_project(self, project: DbtProject) -> None:
         """Add a project to the container."""
@@ -66,6 +70,7 @@ class DbtProjectContainer:
             self._projects[project.project_root] = project
             if self._default_project is None:
                 self._default_project = project.project_root
+        logger.debug("Registered project '%s' at '%s'.", project.project_name, project.project_root)
 
     def create_project(
         self,
@@ -111,12 +116,14 @@ class DbtProjectContainer:
     def drop_all(self) -> None:
         """Unregister and clean up all projects."""
         with self._lock:
+            logger.debug("Dropping all registered projects.")
             for name in list(self._projects):
                 _ = self.drop_project(name)
 
     def reparse_all(self) -> None:
         """Re-parse all registered projects safely."""
         with self._lock:
+            logger.debug("Re-parsing all registered projects.")
             for project in self._projects.values():
                 project.parse_project()
 
@@ -146,11 +153,16 @@ class DbtProjectContainer:
 
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the container."""
+        s = "DbtProjectContainer({})"
         if len(self._projects) == 0:
-            return "DbtProjectContainer(<empty>)"
-        return "\n".join(
-            f"DbtProject(name={proj.project_name}, root={proj.project_root})"
-            for proj in self._projects.values()
+            return s.format("<empty>")
+        return s.format(
+            "\n  ",
+            "\n  ".join(
+                f"DbtProject(name={proj.project_name}, root={proj.project_root}),"
+                for proj in self._projects.values()
+            )
+            + "\n",
         )
 
 

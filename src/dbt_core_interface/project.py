@@ -17,7 +17,7 @@ import time
 import typing as t
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
@@ -167,6 +167,44 @@ class DbtProject:
 
     ADAPTER_TTL: int = 3600
 
+    _instances: dict[Path, DbtProject] = {}
+    _instance_lock: threading.Lock = threading.Lock()
+
+    def __new__(
+        cls,
+        target: str | None = None,
+        project_dir: str | None = None,
+        profiles_dir: str | None = None,
+        threads: int = 1,
+        vars: dict[str, t.Any] | None = None,
+        load: bool = True,
+        autoregister: bool = True,
+    ) -> DbtProject:
+        """Create a new DbtProject instance, ensuring only one instance per project root."""
+        with cls._instance_lock:
+            p = Path(project_dir or DEFAULT_PROJECT_DIR).expanduser().resolve()
+            project = cls._instances.get(p)
+            if not project:
+                project = super().__new__(cls)
+                cls._instances[p] = project
+            else:
+                if profiles_dir is None:
+                    profiles_dir = str(_get_profiles_dir(project_dir).resolve())
+                if (
+                    (target and target != project.runtime_config.target_name)
+                    or (vars and vars != project.args.vars)
+                    or Path(profiles_dir).expanduser().resolve() != project.profiles_yml.parent
+                ):
+                    project.args = DbtConfiguration(
+                        target=target,
+                        profiles_dir=profiles_dir,
+                        project_dir=str(p),
+                        threads=threads,
+                        vars=vars or {},
+                    )
+                    project.parse_project(reparse_configuration=True)
+        return project
+
     def __init__(
         self,
         target: str | None = None,
@@ -178,6 +216,9 @@ class DbtProject:
         autoregister: bool = True,
     ) -> None:
         """Initialize the dbt project."""
+        if hasattr(self, "_args"):
+            return
+
         if project_dir is not None and profiles_dir is None:
             profiles_dir = str(_get_profiles_dir(project_dir).resolve())
 
