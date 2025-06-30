@@ -155,6 +155,10 @@ class DbtTemplater(JinjaTemplater):
             append_to_templated="\n" if n_trailing_newlines else "",
         )
 
+        max_end = max(s.templated_slice.stop for s in sliced_file)
+        if len(templated_sql) > max_end:
+            templated_sql = templated_sql[:max_end]
+
         return (
             TemplatedFile(
                 source_str=source_dbt_sql,

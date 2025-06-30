@@ -43,4 +43,4 @@ jobs:
         run: |
           uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project dbt deps
           uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project2 dbt deps
-          uv run pytest tests/test_main.py tests/sqlfluff_templater/linter_test.py
+          uv run pytest
