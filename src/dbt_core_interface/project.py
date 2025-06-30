@@ -218,10 +218,7 @@ class DbtProject:
 
         if autoregister:
             container = DbtProjectContainer()
-            container._projects[str(self.project_root)] = self  # pyright: ignore[reportPrivateUsage]
-            container._projects[self.project_name] = self  # pyright: ignore[reportPrivateUsage]
-            if container.get_default_project() is None:
-                container.set_default_project(self.project_name)
+            container.add_project(self)
 
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the DbtProject instance."""
@@ -321,7 +318,7 @@ class DbtProject:
     @property
     def profiles_yml(self) -> Path:
         """The path to the profiles.yml file."""
-        return Path(self._args.profiles_dir).resolve() / "profiles.yml"
+        return Path(self._args.profiles_dir).expanduser().resolve() / "profiles.yml"
 
     @property
     def pool(self) -> ThreadPoolExecutor:
@@ -617,7 +614,7 @@ class DbtProject:
         path = Path(path)
         if not path.is_absolute():
             path = self.project_root / path
-        path = path.resolve()
+        path = path.expanduser().resolve()
         for node in self.manifest.nodes.values():
             if self.project_root / node.original_file_path == path:
                 return node
@@ -937,21 +934,22 @@ class DbtProjectContainer:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
-            return cls._instance
+
+        return cls._instance
 
     def _initialize(self) -> None:
-        self._projects: dict[str, DbtProject] = {}  # pyright: ignore[reportUninitializedInstanceVariable]
-        self._default_project: str | None = None  # pyright: ignore[reportUninitializedInstanceVariable]
+        self._projects: dict[Path, DbtProject] = {}  # pyright: ignore[reportUninitializedInstanceVariable]
+        self._default_project: Path | None = None  # pyright: ignore[reportUninitializedInstanceVariable]
         self._lock = threading.RLock()  # pyright: ignore[reportUninitializedInstanceVariable]
 
-    def get_project(self, name: str) -> DbtProject | None:
-        """Return the project registered under the given name, or None if not found."""
+    def get_project(self, name: Path | str) -> DbtProject | None:
+        """Return the project registered at the given Path, or None if not found."""
         with self._lock:
-            return self._projects.get(name)
+            return self._projects.get(Path(name).expanduser().resolve())
 
-    def get_project_by_path(self, path: str | Path) -> DbtProject | None:
+    def find_project_in_tree(self, path: Path | str) -> DbtProject | None:
         """Return the project whose root is at or above the given path."""
-        p = Path(path).resolve()
+        p = Path(path).expanduser().resolve()
         with self._lock:
             for project in self._projects.values():
                 root = project.project_root.resolve()
@@ -966,18 +964,26 @@ class DbtProjectContainer:
                 return None
             return self._projects.get(self._default_project)
 
-    def set_default_project(self, name: str) -> None:
+    def set_default_project(self, path: Path | str) -> None:
         """Set the default project by name."""
-        self._default_project = name
+        self._default_project = Path(path).expanduser().resolve()
 
-    def add_project(
+    def add_project(self, project: DbtProject) -> None:
+        """Add a project to the container."""
+        with self._lock:
+            if project.project_root in self._projects:
+                raise ValueError(f"Project '{project.project_root}' is already registered.")
+            self._projects[project.project_root] = project
+            if self._default_project is None:
+                self._default_project = project.project_root
+
+    def create_project(
         self,
         target: str | None = None,
         profiles_dir: str | None = None,
         project_dir: str | None = None,
         threads: int = 1,
         vars: dict[str, t.Any] | None = None,
-        name_override: str = "",
     ) -> DbtProject:
         """Instantiate and register a new DbtProject."""
         project = DbtProject(
@@ -987,40 +993,31 @@ class DbtProjectContainer:
             threads=threads,
             vars=vars or {},
         )
-        name = name_override or project.project_name
-        with self._lock:
-            if name in self._projects:
-                raise ValueError(f"Project '{name}' is already registered.")
-            self._projects[name] = project
-            if self._default_project is None:
-                self._default_project = name
+        self.add_project(project)
         return project
 
-    def add_project_from_config(self, config: DbtConfiguration) -> DbtProject:
+    def create_project_from_config(self, config: DbtConfiguration) -> DbtProject:
         """Instantiate a project from configuration and register it."""
         project = DbtProject.from_config(config)
-        name = project.project_name
-        with self._lock:
-            _ = self._projects.setdefault(name, project)
-            if self._default_project is None:
-                self._default_project = name
+        self.add_project(project)
         return project
 
-    def drop_project(self, name: str) -> None:
+    def drop_project(self, path: Path | str) -> DbtProject | None:
         """Unregister and clean up the project with the given name."""
         with self._lock:
-            project = self._projects.pop(name, None)
+            project = self._projects.pop(p := Path(path).expanduser().resolve(), None)
             if project is None:
                 return
             project.adapter.connections.cleanup_all()
-            if name == self._default_project:
+            if p == self._default_project:
                 self._default_project = next(iter(self._projects), None)
+            return project
 
     def drop_all(self) -> None:
         """Unregister and clean up all projects."""
         with self._lock:
             for name in list(self._projects):
-                self.drop_project(name)
+                _ = self.drop_project(name)
 
     def reparse_all(self) -> None:
         """Re-parse all registered projects safely."""
@@ -1028,22 +1025,22 @@ class DbtProjectContainer:
             for project in self._projects.values():
                 project.parse_project()
 
-    def registered_projects(self) -> list[str]:
-        """Return a list of registered project names."""
+    def registered_projects(self) -> list[Path]:
+        """Return a list of registered project paths."""
         with self._lock:
             return list(self._projects.keys())
 
     def __len__(self) -> int:
         return len(self._projects)
 
-    def __getitem__(self, name: str) -> DbtProject:
-        project = self.get_project(name)
+    def __getitem__(self, path: Path | str) -> DbtProject:
+        project = self.get_project(path)
         if project is None:
-            raise KeyError(f"No project registered under '{name}'.")
+            raise KeyError(f"No project registered under '{path}'.")
         return project
 
-    def __contains__(self, name: str) -> bool:
-        return name in self._projects
+    def __contains__(self, path: Path | str) -> bool:
+        return path in self._projects
 
     def __iter__(self) -> t.Generator[DbtProject, None, None]:
         yield from self._projects.values()

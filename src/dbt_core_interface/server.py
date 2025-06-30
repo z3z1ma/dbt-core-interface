@@ -180,11 +180,11 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
     _ = app
     _load_saved_state(container := get_container())
-    app.state.watchers = watchers = t.cast(dict[str, DbtProjectWatcher], {})
+    app.state.watchers = watchers = t.cast(dict[int, DbtProjectWatcher], {})
     for project in container:
         watcher = project.create_project_watcher()
         watcher.start()
-        watchers[str(project.project_root)] = watcher
+        watchers[id(project)] = watcher
     try:
         yield
     finally:
@@ -225,7 +225,7 @@ def get_runner(
     project = x_dbt_project
     runner = None
     if project:
-        runner = runners.get_project(project) or runners.get_project_by_path(project)
+        runner = runners.find_project_in_tree(project)
     if not runner:
         runner = runners.get_default_project()
     if not runner:
@@ -359,19 +359,21 @@ def register_project(
                 data={},
             )
         )
-    if project in runners.registered_projects():
-        return ServerRegisterResult(added=project, projects=runners.registered_projects())
+    project_path = Path(project).expanduser().resolve()
+    if project_path in runners.registered_projects():
+        return ServerRegisterResult(
+            added=project, projects=list(map(str, runners.registered_projects()))
+        )
     try:
-        dbt_project = runners.add_project(
+        dbt_project = runners.create_project(
             target=target,
             profiles_dir=profiles_dir,
             project_dir=project_dir,
-            name_override=project,
         )
         _save_state(runners)
         watcher = dbt_project.create_project_watcher()
         watcher.start()
-        app.state.watchers[str(dbt_project.project_root)] = watcher
+        app.state.watchers[id(dbt_project)] = watcher
     except Exception as e:
         response.status_code = 400
         return ServerErrorContainer(
@@ -381,7 +383,9 @@ def register_project(
                 data=getattr(e, "__dict__", {}),
             )
         )
-    return ServerRegisterResult(added=project, projects=runners.registered_projects())
+    return ServerRegisterResult(
+        added=project, projects=list(map(str, runners.registered_projects()))
+    )
 
 
 @app.post("/unregister")
@@ -391,18 +395,24 @@ def unregister_project(
     runners: DbtProjectContainer = Depends(get_container),
 ) -> ServerUnregisterResult | ServerErrorContainer:
     """Remove a registered dbt project from the server."""
-    if not project or project not in runners.registered_projects():
+    project_path = Path(project).expanduser().resolve()
+    if not project or project_path not in runners.registered_projects():
         response.status_code = 400
         return ServerErrorContainer(
             error=ServerError(
                 code=ServerErrorCode.ProjectNotRegistered,
                 message="Project not registered; register first.",
-                data={"registered_projects": runners.registered_projects()},
+                data={"registered_projects": list(map(str, runners.registered_projects()))},
             )
         )
-    runners.drop_project(project)
+    dbt_project = runners.drop_project(project)
     _save_state(runners)
-    return ServerUnregisterResult(removed=project, projects=runners.registered_projects())
+    watcher = app.state.watchers.pop(id(dbt_project), None)
+    if watcher:
+        watcher.stop()
+    return ServerUnregisterResult(
+        removed=project, projects=list(map(str, runners.registered_projects()))
+    )
 
 
 @app.get("/parse")
@@ -416,7 +426,6 @@ def reset_project(
     runner: DbtProject = Depends(get_runner),
 ) -> ServerResetResult | ServerErrorContainer:
     """Re-parse the dbt project configuration and manifest."""
-    _ = background_tasks
     sync = False
     if target is not None and target != runner.runtime_config.target_name:
         params = asdict(runner.args)

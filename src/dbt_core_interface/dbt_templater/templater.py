@@ -54,7 +54,9 @@ class DbtTemplater(JinjaTemplater):
         **kwargs: t.Any,
     ) -> tuple[TemplatedFile | None, list[SQLTemplaterError]]:
         """Compile a dbt model and return the compiled SQL."""
-        fname_absolute_path = os.path.abspath(fname) if fname != "stdin" else fname
+        fname_absolute_path = (
+            os.path.abspath(fname) if fname not in ("stdin", "<string input>") else fname
+        )
         try:
             return self._unsafe_process(fname_absolute_path, in_str, config)
         except DbtCompilationException as e:
@@ -83,13 +85,13 @@ class DbtTemplater(JinjaTemplater):
             if config
             else os.getcwd()
         )
-        dbt_project = container.get_project_by_path(os.path.abspath(project_path))
+        dbt_project = container.find_project_in_tree(os.path.abspath(project_path))
 
         if not dbt_project:
-            dbt_project = container.add_project(project_dir=project_path)
+            dbt_project = container.create_project(project_dir=project_path)
 
         try:
-            if fname and fname != "stdin":
+            if fname and fname not in ("stdin", "<string input>"):
                 resolved_path = os.path.relpath(
                     fname, start=os.path.abspath(dbt_project.project_root)
                 )
@@ -136,7 +138,7 @@ class DbtTemplater(JinjaTemplater):
                 f"Skipped file {fname} because dbt raised a fatal exception during compilation: {err!s}"
             ) from err
 
-        if fname and fname != "stdin":
+        if fname and fname not in ("stdin", "<string input>"):
             with open(fname) as source_dbt_model:
                 source_dbt_sql = source_dbt_model.read()
         else:
