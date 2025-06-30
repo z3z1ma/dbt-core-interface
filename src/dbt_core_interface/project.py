@@ -690,34 +690,60 @@ class DbtProject:
         **kwargs: t.Any,
     ) -> FluffConfig:
         """Load the SQLFluff configuration for a given path, otherwise for the project itself."""
-        from sqlfluff.core.config import ConfigLoader, FluffConfig
+        import sqlfluff.core.config as sqlfluff_config
 
         overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
         overrides["dialect"] = self.runtime_config.credentials.type
         overrides["processes"] = 1
 
-        loader = ConfigLoader.get_global()
-        loader_cache = loader._config_cache  # pyright: ignore[reportPrivateUsage]
-        for p in list(loader_cache):
-            p_obj = Path(p)
-            last_mtime = self._sqlfluff_mtime_cache.get(p_obj, 0.0)
-            curr_mtime = p_obj.stat().st_mtime if p_obj.exists() else 0.0
-            if curr_mtime > last_mtime:
-                del loader_cache[p]
+        conf_files = [
+            "setup.cfg",
+            "tox.ini",
+            "pep8.ini",
+            ".sqlfluff",
+            ".sqlfluffignore",
+            "pyproject.toml",
+        ]
+        invalidate_caches = False
+
+        path = Path(path or self.project_root).expanduser().resolve()
+        for parent in path.parents:
+            for conf_file in conf_files:
+                f = parent / conf_file
+                if f.exists():
+                    last_mtime = self._sqlfluff_mtime_cache.get(f, 0.0)
+                    curr_mtime = f.stat().st_mtime
+                    if curr_mtime > last_mtime:
+                        invalidate_caches = True
+                    self._sqlfluff_mtime_cache[f] = curr_mtime
+            if path == Path.home() or path == path.root:
+                break
 
         if extra_config_path:
-            _ = loader_cache.pop(str(extra_config_path), None)
+            explicit_conf = Path(extra_config_path).expanduser().resolve()
+            if explicit_conf.exists():
+                last_mtime = self._sqlfluff_mtime_cache.get(explicit_conf, 0.0)
+                curr_mtime = explicit_conf.stat().st_mtime if explicit_conf.exists() else 0.0
+                if curr_mtime > last_mtime:
+                    invalidate_caches = True
+                self._sqlfluff_mtime_cache[explicit_conf] = curr_mtime
 
-        fluff_conf = FluffConfig.from_path(
-            path=str(path or self.project_root),
+        if invalidate_caches:
+            if hasattr(sqlfluff_config, "clear_config_caches"):
+                # SQLFLuff 3.2+
+                sqlfluff_config.clear_config_caches()
+            else:
+                # SQLFLuff 3.1 and earlier
+                loader = sqlfluff_config.ConfigLoader.get_global()
+                loader_cache: dict[str, str] = getattr(loader, "_config_cache", {})
+                loader_cache.clear()
+
+        fluff_conf = sqlfluff_config.FluffConfig.from_path(
+            path=str(path),
             extra_config_path=str(extra_config_path) if extra_config_path else None,
             ignore_local_config=ignore_local_config,
             overrides=overrides,
         )
-
-        for p in loader_cache:
-            p_obj = Path(p)
-            self._sqlfluff_mtime_cache[p_obj] = p_obj.stat().st_mtime if p_obj.exists() else 0.0
 
         return fluff_conf
 
