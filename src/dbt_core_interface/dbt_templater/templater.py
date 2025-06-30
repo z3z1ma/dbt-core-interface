@@ -21,6 +21,8 @@ if t.TYPE_CHECKING:
     from dbt_common.semver import VersionSpecifier
     from sqlfluff.core import FluffConfig
 
+__all__ = ["DbtTemplater"]
+
 
 @t.final
 class DbtTemplater(JinjaTemplater):

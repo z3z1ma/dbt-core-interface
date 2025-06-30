@@ -1,3 +1,4 @@
+# pyright: reportImportCycles=false
 """State for managing dbt projects in a singleton container."""
 
 from __future__ import annotations
@@ -7,7 +8,10 @@ import typing as t
 from collections.abc import Generator
 from pathlib import Path
 
-from dbt_core_interface import DbtConfiguration, DbtProject
+if t.TYPE_CHECKING:
+    from dbt_core_interface.project import DbtConfiguration, DbtProject
+
+__all__ = ["DbtProjectContainer"]
 
 
 @t.final
@@ -72,6 +76,8 @@ class DbtProjectContainer:
         vars: dict[str, t.Any] | None = None,
     ) -> DbtProject:
         """Instantiate and register a new DbtProject."""
+        from dbt_core_interface.project import DbtProject
+
         project = DbtProject(
             target=target,
             profiles_dir=profiles_dir,
@@ -85,6 +91,8 @@ class DbtProjectContainer:
 
     def create_project_from_config(self, config: DbtConfiguration) -> DbtProject:
         """Instantiate a project from configuration and register it."""
+        from dbt_core_interface.project import DbtProject
+
         project = DbtProject.from_config(config)
         self.add_project(project)
         return project

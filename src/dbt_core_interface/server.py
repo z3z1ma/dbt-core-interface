@@ -32,13 +32,15 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
+from dbt_core_interface.container import DbtProjectContainer
 from dbt_core_interface.project import (
     DbtConfiguration,
     DbtProject,
-    DbtProjectContainer,
-    DbtProjectWatcher,
     ExecutionResult,
 )
+from dbt_core_interface.watcher import DbtProjectWatcher
+
+__all__ = ["app", "main"]
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +184,7 @@ async def lifespan(app: FastAPI):
     _load_saved_state(container := get_container())
     app.state.watchers = watchers = t.cast(dict[int, DbtProjectWatcher], {})
     for project in container:
-        watcher = project.create_project_watcher()
+        watcher = DbtProjectWatcher(project)
         watcher.start()
         watchers[id(project)] = watcher
     try:
@@ -371,7 +373,7 @@ def register_project(
             project_dir=project_dir,
         )
         _save_state(runners)
-        watcher = dbt_project.create_project_watcher()
+        watcher = DbtProjectWatcher(dbt_project)
         watcher.start()
         app.state.watchers[id(dbt_project)] = watcher
     except Exception as e:
