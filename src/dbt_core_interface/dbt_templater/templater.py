@@ -77,18 +77,17 @@ class DbtTemplater(JinjaTemplater):
         in_str: str = "",
         config: FluffConfig | None = None,
     ) -> tuple[TemplatedFile, list[SQLTemplaterError]]:
-        from dbt_core_interface.project import DbtProjectContainer
+        from dbt_core_interface.container import CONTAINER
 
-        container = DbtProjectContainer()
         project_path = (
             config.get_section((self.templater_selector, self.name, "project_dir"))
             if config
             else os.getcwd()
         )
-        dbt_project = container.find_project_in_tree(os.path.abspath(project_path))
+        dbt_project = CONTAINER.find_project_in_tree(os.path.abspath(project_path))
 
         if not dbt_project:
-            dbt_project = container.create_project(project_dir=project_path)
+            dbt_project = CONTAINER.create_project(project_dir=project_path)
 
         try:
             if fname and fname not in ("stdin", "<string input>"):
