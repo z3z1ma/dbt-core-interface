@@ -140,10 +140,9 @@ def _load_saved_state(runners: DbtProjectContainer) -> None:
                 "project_dir": entry.get("project_dir"),
                 "threads": entry.get("threads", 1),
                 "vars": entry.get("vars", {}),
-                "name_override": project_name,
             }
             try:
-                _ = runners.add_project(**{k: v for k, v in kwargs.items() if v is not None})
+                _ = runners.create_project(**{k: v for k, v in kwargs.items() if v is not None})
                 logging.info("Restored project %s from state", project_name)
             except Exception as e:
                 logging.error("Failed to restore project %s: %s", project_name, e)
