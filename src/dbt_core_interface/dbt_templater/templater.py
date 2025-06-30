@@ -83,7 +83,7 @@ class DbtTemplater(JinjaTemplater):
             if config
             else os.getcwd()
         )
-        dbt_project = container.get_project_by_path(project_path)
+        dbt_project = container.get_project_by_path(os.path.abspath(project_path))
 
         if not dbt_project:
             dbt_project = container.add_project(project_dir=project_path)

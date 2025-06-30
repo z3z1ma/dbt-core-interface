@@ -405,8 +405,8 @@ def unregister_project(
     return ServerUnregisterResult(removed=project, projects=runners.registered_projects())
 
 
-@app.post("/parse", response_model=ServerResetResult)
-@app.post("/reset", response_model=ServerResetResult)
+@app.get("/parse", response_model=ServerResetResult)
+@app.get("/reset", response_model=ServerResetResult)
 def reset_project(
     background_tasks: BackgroundTasks,
     target: str | None = Query(None),
