@@ -523,7 +523,7 @@ def lint_sql(
                 data={},
             )
         )
-    return ServerLintResult(result=record["violations"] if record is not None else [])  # pyright: ignore[reportUnknownArgumentType]
+    return ServerLintResult(result=record["violations"] if record is not None else [])
 
 
 @app.post("/format")

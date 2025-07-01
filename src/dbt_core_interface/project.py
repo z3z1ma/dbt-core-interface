@@ -680,6 +680,23 @@ class DbtProject:
         with dbt.adapters.factory.adapter_management():
             return runner.invoke(expanded_cmd, **kwargs)
 
+    build = functools.partialmethod(command, "build")
+    clean = functools.partialmethod(command, "clean")
+    clone = functools.partialmethod(command, "clone")
+    compile = functools.partialmethod(command, "compile")
+    debug = functools.partialmethod(command, "debug")
+    docs_generate = functools.partialmethod(command, "docs generate")
+    docs_serve = functools.partialmethod(command, "docs serve")
+    list = functools.partialmethod(command, "list")
+    parse = functools.partialmethod(command, "parse")
+    run = functools.partialmethod(command, "run")
+    run_operation = functools.partialmethod(command, "run-operation")
+    seed = functools.partialmethod(command, "seed")
+    show = functools.partialmethod(command, "show")
+    snapshot = functools.partialmethod(command, "snapshot")
+    source_freshness = functools.partialmethod(command, "source freshness")
+    test = functools.partialmethod(command, "test")
+
     _sqlfluff_mtime_cache: dict[Path, float] = {}
 
     def get_sqlfluff_configuration(
