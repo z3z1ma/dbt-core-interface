@@ -1,42 +1,54 @@
-[tool.poetry]
+[project]
 name = "dbt-core-interface"
-version = "0.2.4"
+version = "1.0.0"
 description = "Dbt Core Interface"
-authors = ["Alex Butler <butler.alex2010@gmail.com>"]
-license = "MIT"
+authors = [
+  { name = "Alex Butler", email = "butler.alex2010@gmail.com" },
+]
+license = { text = "MIT" }
 readme = "README.md"
-homepage = "https://github.com/z3z1ma/dbt-core-interface"
-repository = "https://github.com/z3z1ma/dbt-core-interface"
-documentation = "https://dbt-core-interface.readthedocs.io"
-classifiers = ["Development Status :: 3 - Alpha"]
+requires-python = ">=3.9,<3.14"
+classifiers = [
+  "Development Status :: 4 - Beta",
+]
+keywords = [
+  "dbt",
+  "sqlfluff"
+]
+dependencies = [
+  "dbt-core>=1.8.0,<2.0.0",
+  "rich",
+  "typing-extensions; python_version < '3.10'"
+]
 
-[tool.poetry.urls]
+[project.urls]
+Homepage = "https://github.com/z3z1ma/dbt-core-interface"
+Repository = "https://github.com/z3z1ma/dbt-core-interface"
+Documentation = "https://dbt-core-interface.readthedocs.io"
 Changelog = "https://github.com/z3z1ma/dbt-core-interface/releases"
 
-[tool.poetry.dependencies]
-python = ">=3.8,<3.11"
-
-[tool.poetry.dev-dependencies]
-Pygments = ">=2.10.0"
-black = ">=22.12.0"
-coverage = { extras = ["toml"], version = ">=6.2" }
-darglint = ">=1.8.1"
-ruff = ">=0.0.214"
-furo = ">=2021.11.12"
-isort = ">=5.10.1"
-mypy = ">=0.930"
-pep8-naming = ">=0.12.1"
-pre-commit = ">=2.16.0"
-pre-commit-hooks = ">=4.1.0"
-pytest = ">=6.2.5"
-pyupgrade = ">=2.29.1"
-safety = ">=1.10.3"
-sphinx = ">=4.3.2"
-sphinx-autobuild = ">=2021.3.14"
-typeguard = ">=2.13.3"
-xdoctest = { extras = ["colors"], version = ">=0.15.10" }
-myst-parser = { version = ">=0.16.1" }
-WebTest = ">=3"
+[project.optional-dependencies]
+sqlfluff = [
+  "sqlfluff>=2.3.2,<=3.1.1"
+]
+server = [
+  "fastapi~=0.115.14",
+  "uvicorn~=0.35.0"
+]
+dev = [
+  "ruff~=0.12.0",
+  "coverage[toml]>=6.2,<7",
+  "pytest>=8.0.0,<9",
+  "WebTest>=3",
+  "dbt-duckdb",
+  "sqlfluff>=2.3.2,<=3.1.1"
+]
+test = [
+  "dbt-postgres~=1.8.0",
+  "dbt-core~=1.8.0",
+  "psycopg2-binary>=2.8,<3.0",
+  "sqlfluff>=2.3.2,<=3.1.1"
+]
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
@@ -50,66 +62,42 @@ source = ["dbt_core_interface", "tests"]
 show_missing = true
 fail_under = 30
 
-[tool.isort]
-profile = "black"
-force_single_line = false
-lines_after_imports = 2
-exclude = ["dbt_core_interface.py"]
-
-[tool.black]
-line-length = 100
-preview = true
-target-version = ["py38", "py39", "py310", "py311"]
-exclude = ["dbt_core_interface.py"]
-
-[tool.mypy]
-strict = true
-warn_unreachable = true
-pretty = true
-show_column_numbers = true
-show_error_codes = true
-show_error_context = true
-disallow_untyped_calls = false
-exclude = ["noxfile.py", "dbt_core_interface.py"]
-
-[tool.poetry.plugins]
-
-[tool.poetry.plugins."sqlfluff"]
-"dbt_templater" = "dbt_core_interface.dbt_templater"
-
 [tool.ruff]
 line-length = 100
 select = ["B", "B9", "C", "D", "E", "F", "N", "S", "W"]
 ignore = ["E501", "D203", "D213"]
 exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "dbt_core_interface.py",
+  ".bzr",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".hg",
+  ".mypy_cache",
+  ".nox",
+  ".pants.d",
+  ".ruff_cache",
+  ".svn",
+  ".tox",
+  ".venv",
+  "__pypackages__",
+  "_build",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+  "venv",
+  "dbt_core_interface.py",
 ]
-per-file-ignores = { "tests/*" = ["S101"] }
+per-file-ignores = { "tests/*" = ["S101"], "src/dbt_core_interface/project.py" = ["E402"], "src/dbt_core_interface/server.py" = ["B008"] }
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 target-version = "py310"
 
 [tool.ruff.mccabe]
-max-complexity = 10
+max-complexity = 15
 
 [build-system]
-requires = ["poetry-core>=1.2.0<1.4.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.7.17,<0.8.0"]
+build-backend = "uv_build"
+
+[project.entry-points."sqlfluff"]
+dbt_templater = "dbt_core_interface.dbt_templater"

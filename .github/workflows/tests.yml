@@ -1,8 +1,8 @@
 name: Tests
 
 on:
-  - push
-  - pull_request
+  workflow_dispatch:
+  push:
 
 jobs:
   tests:
@@ -12,24 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # full test matrix on 3.10 (well supported py version) on ubuntu
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.0" }
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.1" }
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.2" }
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.3" }
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.4" }
-          - { python: "3.10", os: "ubuntu-latest", dbt: "1.5" }
-          # full test matrix on 3.9 (well supported py version) on ubuntu
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.0" }
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.1" }
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.2" }
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.3" }
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.4" }
-          - { python: "3.9", os: "ubuntu-latest", dbt: "1.5" }
-          # stability test on 3.8 (min python ver) with latest dbt
-          - { python: "3.8", os: "ubuntu-latest", dbt: "1.5" }
-          # stability test on 3.10 with latest dbt on macos (cross platform)
-          - { python: "3.10", os: "macos-latest", dbt: "1.5" }
+          - { python: "3.12", os: "ubuntu-latest", dbt: "1.8" }
+          - { python: "3.11", os: "ubuntu-latest", dbt: "1.8" }
+          - { python: "3.10", os: "ubuntu-latest", dbt: "1.8" }
+          - { python: "3.9", os: "ubuntu-latest", dbt: "1.8" }
 
     env:
       FORCE_COLOR: "1"
@@ -37,35 +23,24 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4.1.7
 
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          version: "0.7.17"
           python-version: ${{ matrix.python }}
 
-      - name: Upgrade pip
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run tests
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
-          pip --version
-
-      - name: Upgrade pip in virtual environments
-        shell: python
-        run: |
-          import os
-          import pip
-
-          with open(os.environ["GITHUB_ENV"], mode="a") as io:
-              print(f"VIRTUALENV_PIP={pip.__version__}", file=io)
-
-      - name: Run Tests
-        run: |
-          make test-dbt${{ matrix.dbt }}
-
-      # TODO: Upload docs
-      # - name: Upload documentation
-      #   if: matrix.session == 'docs-build'
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: docs
-      #     path: docs/_build
+          uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project dbt deps
+          uv run --directory tests/sqlfluff_templater/fixtures/dbt/dbt_project2 dbt deps
+          uv run pytest

@@ -16,7 +16,6 @@
 [python version]: https://pypi.org/project/dbt-core-interface
 [read the docs]: https://dbt-core-interface.readthedocs.io/
 [tests]: https://github.com/z3z1ma/dbt-core-interface/actions?workflow=Tests
-[codecov]: https://app.codecov.io/gh/z3z1ma/dbt-core-interface
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
@@ -49,7 +48,7 @@ An extremely simplified interface is provided to accomplish all of the following
 You can install _Dbt Core Interface_ via [pip] from [PyPI]:
 
 ```console
-$ pip install dbt-core-interface
+pip install dbt-core-interface
 ```
 
 ## Usage
