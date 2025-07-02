@@ -340,26 +340,16 @@ def compile_sql(
 @app.post("/register")
 def register_project(
     response: Response,
-    project: str = Header(None, alias="X-dbt-Project"),
+    project_dir: str = Query(...),
     profiles_dir: str | None = Query(None),
-    project_dir: str | None = Query(None),
     target: str | None = Query(None),
     runners: DbtProjectContainer = Depends(get_container),
 ) -> ServerRegisterResult | ServerErrorContainer:
     """Register a new dbt project with the server."""
-    if not project:
-        response.status_code = 400
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ProjectHeaderNotSupplied,
-                message="Header X-dbt-Project is required for registration.",
-                data={},
-            )
-        )
-    project_path = Path(project).expanduser().resolve()
+    project_path = Path(project_dir).expanduser().resolve()
     if project_path in runners.registered_projects():
         return ServerRegisterResult(
-            added=project, projects=list(map(str, runners.registered_projects()))
+            added=project_path.name, projects=list(map(str, runners.registered_projects()))
         )
     try:
         dbt_project = runners.create_project(
@@ -380,7 +370,7 @@ def register_project(
             )
         )
     return ServerRegisterResult(
-        added=project, projects=list(map(str, runners.registered_projects()))
+        added=project_path.name, projects=list(map(str, runners.registered_projects()))
     )
 
 

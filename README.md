@@ -1,97 +1,167 @@
-# Dbt Core Interface
+<div id="top">
 
-[![PyPI](https://img.shields.io/pypi/v/dbt-core-interface.svg)][pypi_]
-[![Status](https://img.shields.io/pypi/status/dbt-core-interface.svg)][status]
-[![Python Version](https://img.shields.io/pypi/pyversions/dbt-core-interface)][python version]
-[![License](https://img.shields.io/pypi/l/dbt-core-interface)][license]
+<!-- HEADER STYLE: CLASSIC -->
 
-[![Read the documentation at https://dbt-core-interface.readthedocs.io/](https://img.shields.io/readthedocs/dbt-core-interface/latest.svg?label=Read%20the%20Docs)][read the docs]
-[![Tests](https://github.com/z3z1ma/dbt-core-interface/workflows/Tests/badge.svg)][tests]
+<div align="left">
 
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
-[![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
+<img src="https://chatgpt.com/backend-api/public_content/enc/eyJpZCI6Im1fNjg2NDkwZjkzNjU4ODE5MTgyYTg0ZDA4YTJmZDU4ZGI6ZmlsZV8wMDAwMDAwMDk4Nzg2MWY1YTAyNGVkOGZjZDQ4MDIyOCIsInRzIjoiNDg2NTA1IiwicCI6InB5aSIsInNpZyI6IjgwM2NlMDg1NzM1YTNjMjEzMzVhYWFhMzg5NDcxMThmYTgzYTE4MzhiNGVkMzRjNTNkNjMzZTVlOTg0NGU3NTAiLCJ2IjoiMCIsImdpem1vX2lkIjpudWxsfQ==" width="30%" style="position: relative; top: 0; right: 0;" alt="Project Logo"/>
 
-[pypi_]: https://pypi.org/project/dbt-core-interface/
-[status]: https://pypi.org/project/dbt-core-interface/
-[python version]: https://pypi.org/project/dbt-core-interface
-[read the docs]: https://dbt-core-interface.readthedocs.io/
-[tests]: https://github.com/z3z1ma/dbt-core-interface/actions?workflow=Tests
-[pre-commit]: https://github.com/pre-commit/pre-commit
-[black]: https://github.com/psf/black
+# DBT-CORE-INTERFACE
+
+<em>Lightweight, thread-safe, multi-project Python interface to dbt-core</em>
+
+<!-- BADGES -->
+
+<img src="https://img.shields.io/github/license/z3z1ma/dbt-core-interface?style=flat-square&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">
+<img src="https://img.shields.io/github/last-commit/z3z1ma/dbt-core-interface?style=flat-square&logo=git&logoColor=white&color=0080ff" alt="last-commit">
+<img src="https://img.shields.io/github/languages/top/z3z1ma/dbt-core-interface?style=flat-square&color=0080ff" alt="repo-top-language">
+<img src="https://img.shields.io/github/languages/count/z3z1ma/dbt-core-interface?style=flat-square&color=0080ff" alt="repo-language-count">
+
+<em>Built with the tools and technologies:</em>
+
+<img src="https://img.shields.io/badge/TOML-9C4121.svg?style=flat-square&logo=TOML&logoColor=white" alt="TOML">
+<img src="https://img.shields.io/badge/Rich-FAE742.svg?style=flat-square&logo=Rich&logoColor=black" alt="Rich">
+<img src="https://img.shields.io/badge/Ruff-D7FF64.svg?style=flat-square&logo=Ruff&logoColor=black" alt="Ruff">
+<img src="https://img.shields.io/badge/GNU%20Bash-4EAA25.svg?style=flat-square&logo=GNU-Bash&logoColor=white" alt="GNU%20Bash">
+<img src="https://img.shields.io/badge/FastAPI-009688.svg?style=flat-square&logo=FastAPI&logoColor=white" alt="FastAPI">
+<br>
+<img src="https://img.shields.io/badge/Pytest-0A9EDC.svg?style=flat-square&logo=Pytest&logoColor=white" alt="Pytest">
+<img src="https://img.shields.io/badge/Docker-2496ED.svg?style=flat-square&logo=Docker&logoColor=white" alt="Docker">
+<img src="https://img.shields.io/badge/Python-3776AB.svg?style=flat-square&logo=Python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/GitHub%20Actions-2088FF.svg?style=flat-square&logo=GitHub-Actions&logoColor=white" alt="GitHub%20Actions">
+<img src="https://img.shields.io/badge/uv-DE5FE9.svg?style=flat-square&logo=uv&logoColor=white" alt="uv">
+</div>
+
+---
+
+## Overview
+
+`dbt-core-interface` is a lightweight, high-performance Python interface for working directly with `dbt-core` (v1.8+). It allows developers to manage and run dbt projects entirely in memory using an intuitive Python API—enabling runtime SQL compilation, macro evaluation, SQLFluff linting/formatting, and more, all through FastAPI or local usage.
+
+It supports dynamic multi-project environments, automatic re-parsing, file watchers, and asynchronous usage. It is the foundation for more complex interfaces such as `dbt-fastapi` and is designed to rapidly prototype ideas outside the constraints of the dbt-core repo itself.
+
+---
 
 ## Features
 
-An extremely simplified interface is provided to accomplish all of the following with no dependencies outside dbt-core:
+* 🧐 In-memory dbt-core 1.8+ interface with full `RuntimeConfig` hydration
+* ⚡ Fast, thread-safe SQL compilation and execution via FastAPI
+* 🔬 Interactive linting and formatting with SQLFluff
+* 🌐 Live REST API server via FastAPI
+* 🌍 Supports multiple projects simultaneously using `DbtProjectContainer`
+* 🚀 Dynamic macro parsing, Jinja rendering, manifest manipulation
+* 🔄 Background file watching for auto-reparsing
+* ⚖ Direct dbt command passthrough (e.g. `run`, `test`, `docs serve`, etc.)
 
-- Parse dbt project on disk loading dbt core classes into memory from a single class/interface
-
-- Automatic management of the adapter and thread-safe efficient connection pool reuse
-
-- Run SQL and get results in python fully independent of the dbt adapter which automatically enables support for many databases
-
-- Run SQL with dbt SQL from a single method call
-
-- Load macros at runtime enabling custom functionality in third party extensions without requiring the dbt packaging system to be managed in userland
-
-- Compile dbt jinja extremely fast and efficiently, thread-safe and stress tested at load via a Bottle server which live compiles SQL
-
-- Manage multiple dbt projects in a single process using the DbtProjectContainer class
-
-`dbt-core-interface` is a wrapper that allows developers to rapidly develop features and integrations for dbt. This project aims to serve as a place for the community to aggregate the best ways to interface with dbt. It is afforded a much faster iteration cycle and much more freedom due to it's independence from the dbt codebase. It is intended to act as an common library to dbt's existing APIs for developers. Implementations can land here and prove themselves out before landing in the dbt-core codebase and benefit all developers involved. Sqlfluff dbt templater, dbt-osmosis, dbt-fastapi which I am ripping out of dbt-osmosis, an impending metadata manager, a testing framework will all leverage this library. As dbt core evolves and stabilizes its python API, this project will evolve with it. This may manifest in simplification of certain methods but our goal is to maintain the API and focus on driving efficient, innovative/creative, and agile community driven integration patterns.
+---
 
 ## Requirements
 
-- The **only** requirement is dbt-core, tested with versions `1.0.*`, `1.1.*`, `1.2.*`, `1.3.*`, `1.4.*`, `1.5.*`
+* Python 3.9+
+* `dbt-core >= 1.8.0`
 
-## Installation
+Install via PyPI:
 
-You can install _Dbt Core Interface_ via [pip] from [PyPI]:
-
-```console
+```bash
 pip install dbt-core-interface
 ```
 
+---
+
 ## Usage
 
-Please see the [Api Reference] for details.
+### Programmatic
 
-To launch the Bottle server for live compiling dbt jinja:
+```python
+from dbt_core_interface import DbtProject
 
-    python -m dbt_core_interface.project
+# Load your project
+project = DbtProject(project_dir="/path/to/dbt_project")
 
-This will launch the server on port 8581. You can then make requests to the server, e.g.:
+# Run a simple SQL query
+res = project.execute_sql("SELECT current_date AS today")
+print(res.table)
 
-    curl -X POST -H "Content-Type: application/json" -H "X-dbt-Project: dbt_project" -d '{"project_dir":"/app/tests/sqlfluff_templater/fixtures/dbt/dbt_project/","profiles_dir":"/app/tests/sqlfluff_templater/fixtures/dbt/profiles_yml/","target":"dev"}' http://localhost:8581/register
+# Compile SQL (but don't run it)
+compiled = project.compile_sql("SELECT * FROM {{ ref('my_model') }}")
+print(compiled.compiled_code)
 
-You can change the server hostname and port using the `--host` and `--port` arguments.
+# Execute a ref() lookup
+node = project.ref("my_model")
+print(node.resource_type, node.name)
 
-## Contributing
+# Load a source node
+source = project.source("my_source", "my_table")
+print(source.description)
 
-Contributions are very welcome.
-To learn more, see the [Contributor Guide].
+# Incrementally parse the project
+project.parse_project(write_manifest=True)
+
+# Re-parse a specific path
+project.parse_paths("models/my_model.sql")
+
+# Compile a node from path
+node = project.get_node_by_path("models/my_model.sql")
+compiled = project.compile_node(node)
+print(compiled.compiled_code)
+
+# Run a dbt command programmatically
+project.run()
+project.test()
+
+# SQLFluff linting
+lint_result = project.lint("models/my_model.sql")
+print(lint_result)
+
+# SQLFluff formatting
+success, formatted_sql = project.format("models/my_model.sql")
+print(formatted_sql)
+
+# Use the DbtProjectContainer to manage multiple projects
+from dbt_core_interface import DbtProjectContainer
+
+container = DbtProjectContainer()
+container.create_project(project_dir="/path/to/dbt_project_1")
+container.create_project(project_dir="/path/to/dbt_project_2")
+print(container.registered_projects())
+```
+
+### Server Mode (FastAPI)
+
+Run:
+
+```bash
+python -m dbt_core_interface.server --host 0.0.0.0 --port 8581
+```
+
+Register a project:
+
+```bash
+curl -X POST 'http://localhost:8581/register?project_dir=/your/dbt_project'
+```
+
+Compile SQL:
+
+```bash
+curl -X POST 'http://localhost:8581/compile' -H 'X-dbt-Project: /your/dbt_project' -d 'select * from my_model'
+```
+
+---
+
+## Documentation
+
+* 📚 [Read the Docs](https://dbt-core-interface.readthedocs.io/)
+* 📖 [API Reference](https://dbt-core-interface.readthedocs.io/en/latest/reference.html)
+* 🚑 [Health Check](http://localhost:8581/health)
+
+---
 
 ## License
 
-Distributed under the terms of the [MIT license][license],
-_Dbt Core Interface_ is free and open source software.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/z3z1ma/dbt-core-interface/blob/main/LICENSE) file for more info.
 
-## Issues
+---
 
-If you encounter any problems,
-please [file an issue] along with a detailed description.
+## Acknowledgments
 
-## Credits
-
-This project was generated from [@cjolowicz]'s [Hypermodern Python Cookiecutter] template.
-
-[@cjolowicz]: https://github.com/cjolowicz
-[pypi]: https://pypi.org/
-[hypermodern python cookiecutter]: https://github.com/cjolowicz/cookiecutter-hypermodern-python
-[file an issue]: https://github.com/z3z1ma/dbt-core-interface/issues
-[pip]: https://pip.pypa.io/
-
-<!-- github-only -->
-
-[license]: https://github.com/z3z1ma/dbt-core-interface/blob/main/LICENSE
-[contributor guide]: https://github.com/z3z1ma/dbt-core-interface/blob/main/CONTRIBUTING.md
-[api reference]: https://dbt-core-interface.readthedocs.io/en/latest/reference.html
+Thanks to the dbt-core maintainers and contributors whose work makes this project possible.
