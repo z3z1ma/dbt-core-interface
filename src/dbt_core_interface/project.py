@@ -119,10 +119,10 @@ class DbtConfiguration:
 
     project_dir: str = field(default_factory=lambda: str(_get_project_dir()))
     profiles_dir: str = field(default_factory=lambda: str(_get_profiles_dir()))
-    target: str | None = None
+    target: str | None = field(default_factory=lambda: os.getenv("DBT_TARGET"))
     threads: int = 1
     vars: dict[str, t.Any] = field(default_factory=dict)
-    profile: str | None = None
+    profile: str | None = field(default_factory=lambda: os.getenv("DBT_PROFILE"))
 
     quiet: bool = True
     use_experimental_parser: bool = True
