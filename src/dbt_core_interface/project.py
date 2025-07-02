@@ -17,7 +17,7 @@ import time
 import typing as t
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
@@ -284,14 +284,14 @@ class DbtProject:
         return self._args
 
     @args.setter
-    def args(self, value: DbtConfiguration) -> None:
+    def args(self, value: DbtConfiguration | dict[str, t.Any]) -> None:  # pyright: ignore[reportPropertyTypeMismatch]
         """Set the args for the DbtProject instance and update runtime config."""
+        if isinstance(value, dict):
+            merged_args = asdict(self._args)
+            merged_args.update(value)
+            value = DbtConfiguration(**merged_args)
         set_from_args(value, None)  # pyright: ignore[reportArgumentType]
-        self.runtime_config = RuntimeConfig.from_args(value)
-        self.__manifest_loader = ManifestLoader(
-            self.runtime_config,
-            self.runtime_config.load_dependencies(),
-        )
+        self.parse_project(reparse_configuration=True)
         self._args = value
 
     @property
