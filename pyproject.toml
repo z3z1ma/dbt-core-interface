@@ -1,6 +1,7 @@
 [project]
 name = "dbt-core-interface"
 version = "1.0.0"
+dynamic = []
 description = "Dbt Core Interface"
 authors = [
   { name = "Alex Butler", email = "butler.alex2010@gmail.com" },
@@ -49,6 +50,12 @@ test = [
   "psycopg2-binary>=2.8,<3.0",
   "sqlfluff>=2.3.2,<=3.1.1"
 ]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]

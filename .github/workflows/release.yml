@@ -16,25 +16,20 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5.1.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.10"
+          version: "0.7.18"
 
-      - name: Upgrade pip
-        run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
-          pip --version
-
-      - name: Install Poetry
-        run: |
-          pip install --constraint=.github/workflows/constraints.txt poetry
-          poetry --version
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
 
       - name: Check if there is a parent commit
         id: check-parent-commit
         run: |
-          echo "::set-output name=sha::$(git rev-parse --verify --quiet HEAD^)"
+          echo "sha=$(git rev-parse --verify --quiet HEAD^)" >> "$GITHUB_OUTPUT"
 
       - name: Detect and tag new version
         id: check-version
@@ -42,33 +37,30 @@ jobs:
         uses: salsify/action-detect-and-tag-new-version@v2.0.1
         with:
           version-command: |
-            bash -o pipefail -c "poetry version | awk '{ print \$2 }'"
+            bash -o pipefail -c "grep '^version =' pyproject.toml | sed -E 's/version = \"(.+)\"/\1/'"
 
       - name: Bump version for developmental release
         if: "! steps.check-version.outputs.tag"
         run: |
-          poetry version patch &&
-          version=$(poetry version | awk '{ print $2 }') &&
-          poetry version $version.dev.$(date +%s)
+          current_version=$(grep '^version =' pyproject.toml | sed -E 's/version = \"(.+)\"/\1/')
+          new_version="${current_version}.dev.$(date +%s)"
+          sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
 
-      - name: Build package
-        run: |
-          poetry build --ansi
+      - name: Build package with uv
+        run: uv build
 
       - name: Publish package on PyPI
         if: steps.check-version.outputs.tag
-        uses: pypa/gh-action-pypi-publish@v1.8.3
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
       - name: Publish package on TestPyPI
         if: "! steps.check-version.outputs.tag"
-        uses: pypa/gh-action-pypi-publish@v1.8.3
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+          UV_PUBLISH_INDEX: testpypi
 
       - name: Publish the release notes
         uses: release-drafter/release-drafter@v5.20.0

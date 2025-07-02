@@ -661,7 +661,6 @@ class DbtProject:
         for node in self.manifest.nodes.values():
             if self.project_root / node.original_file_path == path:
                 return node
-        return None
 
     def command(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> dbtRunnerResult:
         """Run a dbt command with the current project manifest."""
