@@ -1,6 +1,6 @@
 [project]
 name = "dbt-core-interface"
-version = "1.0.0"
+version = "1.0.1"
 dynamic = []
 description = "Dbt Core Interface"
 authors = [
@@ -8,7 +8,7 @@ authors = [
 ]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.10,<3.14"
 classifiers = [
   "Development Status :: 4 - Beta",
 ]
