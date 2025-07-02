@@ -1,6 +1,7 @@
 [project]
 name = "dbt-core-interface"
 version = "1.0.0"
+dynamic = []
 description = "Dbt Core Interface"
 authors = [
   { name = "Alex Butler", email = "butler.alex2010@gmail.com" },

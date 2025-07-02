@@ -21,20 +21,14 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Upgrade pip
+      - name: Install uv
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
-          pip --version
-
-      - name: Install Poetry
-        run: |
-          pip install --constraint=.github/workflows/constraints.txt poetry
-          poetry --version
+          pip install uv==0.7.13
 
       - name: Check if there is a parent commit
         id: check-parent-commit
         run: |
-          echo "::set-output name=sha::$(git rev-parse --verify --quiet HEAD^)"
+          echo "sha=$(git rev-parse --verify --quiet HEAD^)" >> "$GITHUB_OUTPUT"
 
       - name: Detect and tag new version
         id: check-version
@@ -42,18 +36,18 @@ jobs:
         uses: salsify/action-detect-and-tag-new-version@v2.0.1
         with:
           version-command: |
-            bash -o pipefail -c "poetry version | awk '{ print \$2 }'"
+            bash -o pipefail -c "grep '^version =' pyproject.toml | sed -E 's/version = \"(.+)\"/\1/'"
 
       - name: Bump version for developmental release
         if: "! steps.check-version.outputs.tag"
         run: |
-          poetry version patch &&
-          version=$(poetry version | awk '{ print $2 }') &&
-          poetry version $version.dev.$(date +%s)
+          current_version=$(grep '^version =' pyproject.toml | sed -E 's/version = \"(.+)\"/\1/')
+          new_version="${current_version}.dev.$(date +%s)"
+          sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
 
-      - name: Build package
+      - name: Build package with uv
         run: |
-          poetry build --ansi
+          uv build
 
       - name: Publish package on PyPI
         if: steps.check-version.outputs.tag
