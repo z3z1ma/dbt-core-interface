@@ -8,6 +8,7 @@ on:
 
 jobs:
   release:
+    if: github.repository == 'z3z1ma/dbt-core-interface'
     name: Release
     runs-on: ubuntu-latest
     steps:
