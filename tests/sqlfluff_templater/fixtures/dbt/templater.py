@@ -42,4 +42,11 @@ def sqlfluff_config_path() -> str:
 @pytest.fixture()
 def dbt_templater() -> DbtTemplater:
     """Return an instance of the DbtTemplater."""
-    return t.cast(DbtTemplater, FluffConfig(overrides={"dialect": "ansi"}).get_templater("dbt"))
+    try:
+        return t.cast(DbtTemplater, FluffConfig(overrides={"dialect": "ansi"}).get_templater("dbt"))
+    except TypeError:
+        # 3.4+
+        return t.cast(
+            DbtTemplater,
+            FluffConfig(overrides={"dialect": "ansi", "templater": "dbt"}).get_templater(),
+        )

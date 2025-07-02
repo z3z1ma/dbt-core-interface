@@ -1,6 +1,6 @@
 [project]
 name = "dbt-core-interface"
-version = "1.0.2"
+version = "1.0.3"
 dynamic = []
 description = "Dbt Core Interface"
 authors = [
@@ -18,8 +18,8 @@ keywords = [
 ]
 dependencies = [
   "dbt-core>=1.8.0,<2.0.0",
-  "rich",
-  "typing-extensions; python_version < '3.10'"
+  "rich>10.0",
+  "typing-extensions; python_version < '3.10'",
 ]
 
 [project.urls]

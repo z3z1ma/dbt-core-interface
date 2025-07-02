@@ -92,35 +92,38 @@ else:
 
 def _get_project_dir() -> Path:
     """Get the default project directory following dbt heuristics."""
-    return Path(os.getenv("DBT_PROJECT_DIR", os.getcwd())).expanduser().resolve()
+    if "DBT_PROJECT_DIR" in os.environ:
+        return Path(os.environ["DBT_PROJECT_DIR"]).expanduser().resolve()
+    cwd = Path.cwd()
+    for path in [cwd, *list(cwd.parents)]:
+        if (path / "dbt_project.yml").exists():
+            return path.resolve()
+        if path == Path.home():
+            break
+    return cwd.resolve()
 
 
 def _get_profiles_dir(project_dir: Path | str | None = None) -> Path:
     """Get the default profiles directory following dbt heuristics."""
-    if "DBT_PROFILES_DIR" not in os.environ:
-        _project_dir = Path(project_dir or _get_project_dir())
-        if _project_dir.is_dir() and _project_dir.joinpath("profiles.yml").exists():
-            return _project_dir
-        return Path.home() / ".dbt"
-    return Path(os.environ["DBT_PROFILES_DIR"]).expanduser().resolve()
-
-
-DEFAULT_PROFILES_DIR = str(_get_profiles_dir())
-DEFAULT_PROJECT_DIR = str(_get_project_dir())
+    if "DBT_PROFILES_DIR" in os.environ:
+        return Path(os.environ["DBT_PROFILES_DIR"]).expanduser().resolve()
+    _project_dir = Path(project_dir or _get_project_dir())
+    if _project_dir.is_dir() and _project_dir.joinpath("profiles.yml").exists():
+        return _project_dir
+    return Path.home() / ".dbt"
 
 
 @dataclass(frozen=True)
 class DbtConfiguration:
     """Minimal dbt configuration."""
 
-    project_dir: str = DEFAULT_PROJECT_DIR
-    profiles_dir: str = DEFAULT_PROFILES_DIR
+    project_dir: str = field(default_factory=lambda: str(_get_project_dir()))
+    profiles_dir: str = field(default_factory=lambda: str(_get_profiles_dir()))
     target: str | None = None
     threads: int = 1
     vars: dict[str, t.Any] = field(default_factory=dict)
     profile: str | None = None
 
-    single_threaded: bool = True
     quiet: bool = True
     use_experimental_parser: bool = True
     static_parser: bool = True
@@ -129,6 +132,11 @@ class DbtConfiguration:
     dependencies: list[str] = field(default_factory=list)
     which: str = "zezima was here"
     REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES: bool = field(default_factory=bool)
+
+    @property
+    def single_threaded(self) -> bool:
+        """Return whether the project is single-threaded."""
+        return self.threads <= 1
 
 
 _use_slots = {}
@@ -181,6 +189,7 @@ class DbtProject:
         target: str | None = None,
         project_dir: str | None = None,
         profiles_dir: str | None = None,
+        profile: str | None = None,
         threads: int = 1,
         vars: dict[str, t.Any] | None = None,
         load: bool = True,
@@ -188,7 +197,7 @@ class DbtProject:
     ) -> DbtProject:
         """Create a new DbtProject instance, ensuring only one instance per project root."""
         with cls._instance_lock:
-            p = Path(project_dir or DEFAULT_PROJECT_DIR).expanduser().resolve()
+            p = Path(project_dir or _get_project_dir()).expanduser().resolve()
             project = cls._instances.get(p)
             if not project:
                 project = super().__new__(cls)
@@ -216,6 +225,7 @@ class DbtProject:
         target: str | None = None,
         project_dir: str | None = None,
         profiles_dir: str | None = None,
+        profile: str | None = None,
         threads: int = 1,
         vars: dict[str, t.Any] | None = None,
         load: bool = True,
@@ -228,8 +238,8 @@ class DbtProject:
         if project_dir is not None and profiles_dir is None:
             profiles_dir = str(_get_profiles_dir(project_dir).resolve())
 
-        project_dir = project_dir or DEFAULT_PROJECT_DIR
-        profiles_dir = profiles_dir or DEFAULT_PROFILES_DIR
+        project_dir = project_dir or str(_get_project_dir())
+        profiles_dir = profiles_dir or str(_get_project_dir())
 
         self._args = DbtConfiguration(
             target=target,
@@ -237,6 +247,7 @@ class DbtProject:
             project_dir=project_dir,
             threads=threads,
             vars=vars or {},
+            profile=profile,
         )
 
         set_from_args(self._args, None)  # pyright: ignore[reportArgumentType]
