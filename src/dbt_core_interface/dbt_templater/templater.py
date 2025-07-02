@@ -9,7 +9,6 @@ import typing as t
 from contextlib import suppress
 from functools import cached_property
 
-from dbt_common.exceptions import CompilationError as DbtCompilationException
 from sqlfluff.core.errors import SQLFluffSkipFile, SQLTemplaterError
 from sqlfluff.core.templaters.base import (
     TemplatedFile,
@@ -56,6 +55,8 @@ class DbtTemplater(JinjaTemplater):
         **kwargs: t.Any,
     ) -> tuple[TemplatedFile | None, list[SQLTemplaterError]]:
         """Compile a dbt model and return the compiled SQL."""
+        from dbt_common.exceptions import CompilationError as DbtCompilationException
+
         fname_absolute_path = (
             os.path.abspath(fname) if fname not in ("stdin", "<string input>") else fname
         )

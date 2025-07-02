@@ -8,10 +8,6 @@ import threading
 import typing as t
 from pathlib import Path
 
-from dbt.parser.read_files import ReadFilesFromFileSystem
-from dbt_common.clients.system import get_env
-from dbt_common.context import set_invocation_context
-
 if t.TYPE_CHECKING:
     from dbt_core_interface.project import DbtProject
 
@@ -48,11 +44,7 @@ class DbtProjectWatcher:
         self._project = project
         self.check_interval = check_interval
 
-        self.reader = ReadFilesFromFileSystem(
-            all_projects=self._project.runtime_config.load_dependencies(),
-            files={},
-            saved_files=self._project.manifest.files,
-        )
+        self.reader = project.create_reader()
 
         self._mtimes: dict[Path, float] = {}
         self._running = False
@@ -87,7 +79,7 @@ class DbtProjectWatcher:
     def _monitor_loop(self) -> None:
         """Run the main monitoring loop."""
         self._initialize_file_mtimes()
-        set_invocation_context(get_env())
+        self._project.set_invocation_context()
 
         while self._running and not self._stop_event.is_set():
             try:

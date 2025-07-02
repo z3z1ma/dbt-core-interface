@@ -46,7 +46,7 @@ from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ManifestNode, SourceDefinition
 from dbt.flags import set_from_args
 from dbt.parser.manifest import ManifestLoader, process_node
-from dbt.parser.read_files import FileDiff, InputFile
+from dbt.parser.read_files import FileDiff, InputFile, ReadFilesFromFileSystem
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
@@ -62,7 +62,13 @@ if t.TYPE_CHECKING:
 
 
 disable_tracking()
-set_invocation_context(get_env())
+
+
+def _set_invocation_context() -> None:
+    set_invocation_context(get_env())
+
+
+_set_invocation_context()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -267,6 +273,8 @@ class DbtProject:
         """Return a string representation of the DbtProject instance."""
         return f"DbtProject(name={self.project_name}, root={self.project_root}, last_parsed_at={self._last_parsed_at})"
 
+    set_invocation_context = staticmethod(_set_invocation_context)
+
     @classmethod
     def from_config(cls, config: DbtConfiguration) -> DbtProject:
         """Create project from configuration."""
@@ -416,6 +424,14 @@ class DbtProject:
         _ = atexit.register(self._adapter.connections.cleanup_all)
 
         return self._adapter
+
+    def create_reader(self) -> ReadFilesFromFileSystem:
+        """Create a file reader for the project."""
+        return ReadFilesFromFileSystem(
+            all_projects=self.runtime_config.load_dependencies(),
+            files={},
+            saved_files=self.manifest.files,
+        )
 
     def parse_project(
         self, write_manifest: bool = False, reparse_configuration: bool = False
