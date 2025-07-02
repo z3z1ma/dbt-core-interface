@@ -1,6 +1,6 @@
 [project]
 name = "dbt-core-interface"
-version = "1.0.3"
+version = "1.0.4"
 dynamic = []
 description = "Dbt Core Interface"
 authors = [

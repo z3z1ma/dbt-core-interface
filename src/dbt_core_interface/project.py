@@ -711,6 +711,7 @@ class DbtProject:
     clone = functools.partialmethod(command, "clone")
     compile = functools.partialmethod(command, "compile")
     debug = functools.partialmethod(command, "debug")
+    deps = functools.partialmethod(command, "deps")
     docs_generate = functools.partialmethod(command, "docs generate")
     docs_serve = functools.partialmethod(command, "docs serve")
     list = functools.partialmethod(command, "list")

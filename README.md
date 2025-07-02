@@ -106,15 +106,17 @@ compiled = project.compile_node(node)
 print(compiled.compiled_code)
 
 # Run a dbt command programmatically
-project.run()
+project.run("-s +orders")
 project.test()
 
 # SQLFluff linting
-lint_result = project.lint("models/my_model.sql")
+lint_result = project.lint(sql="select 1 AS foo")
+lint_result = project.lint(sql=Path("models/my_model.sql"))
 print(lint_result)
 
 # SQLFluff formatting
-success, formatted_sql = project.format("models/my_model.sql")
+success, formatted_sql = project.format(sql="Select * FROM orders as o")
+success, formatted_sql = project.format(sql=Path("models/my_model.sql"))
 print(formatted_sql)
 
 # Use the DbtProjectContainer to manage multiple projects
@@ -143,16 +145,51 @@ curl -X POST 'http://localhost:8581/register?project_dir=/your/dbt_project'
 Compile SQL:
 
 ```bash
-curl -X POST 'http://localhost:8581/compile' -H 'X-dbt-Project: /your/dbt_project' -d 'select * from my_model'
+curl -X POST 'http://localhost:8581/compile' \
+     -H 'X-dbt-Project: /your/dbt_project' \
+     -d 'select * from {{ ref("orders" }}'
 ```
 
----
+### Client Usage
 
-## Documentation
+Run the server and use the bundled client to interact with it:
 
-* 📚 [Read the Docs](https://dbt-core-interface.readthedocs.io/)
-* 📖 [API Reference](https://dbt-core-interface.readthedocs.io/en/latest/reference.html)
-* 🚑 [Health Check](http://localhost:8581/health)
+```python
+from dbt_core_interface.client import DbtInterfaceClient, ServerError
+
+client = DbtInterfaceClient(
+    project_dir="/path/to/project",
+    profiles_dir="/path/to/profiles.yml",
+    target="dev",
+    base_url="http://localhost:8581",
+    timeout=(5.0, 15.0)
+)
+
+# Health & heartbeat
+print(client.health_check())  # {'status': 'ok', ...}
+print(client.heartbeat())     # {'alive': True, 'uptime': ...}
+
+# Run SQL with limit & path which allows resolving {{ this }}
+result = client.run_sql("SELECT * FROM {{ this }} ORDER BY id", limit=500, path="models/my_model.sql")
+print(result.table.rows)
+
+# Compile without execution
+comp = client.compile_sql("SELECT * FROM {{ ref('users') }}")
+print(comp.compiled_code)
+
+# Lint & format
+lint = client.lint_sql(raw_sql="select * from {{ ref('users') }}")
+print(lint.violations)
+fmt = client.format_sql(raw_sql="select * from {{ ref('users') }}")
+print(fmt.formatted_code)
+
+# Arbitrary dbt command
+docs = client.command("docs", "generate")
+print(docs)
+
+# On object deletion, project is unregistered automatically
+del client
+```
 
 ---
 

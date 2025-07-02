@@ -30,6 +30,7 @@ from fastapi import (
     Request,
     Response,
 )
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from dbt_core_interface.container import DbtProjectContainer
@@ -555,6 +556,62 @@ def format_sql(
             )
         )
     return ServerFormatResult(result=success, sql=formatted)
+
+
+@app.post("/command")
+def run_dbt_command(
+    response: Response,
+    cmd: str = Query(..., description="The dbt command to run, e.g. 'run', 'test', 'build'"),
+    args: list[str] | None = Body(None, description="List of positional args for the command"),
+    kwargs: dict[str, t.Any] | None = Body(None, description="Keyword args for the command"),
+    runner: DbtProject = Depends(get_runner),
+) -> dict[str, t.Any] | ServerErrorContainer:
+    """Run an arbitrary dbt CLI command on the project."""
+    import agate  # pyright: ignore[reportMissingTypeStubs]
+    from dbt.artifacts.schemas.base import VersionedSchema
+    from dbt.contracts.graph.manifest import Manifest
+
+    try:
+        result = runner.command(cmd, *(args or []), **(kwargs or {}))
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+    if isinstance(result.result, Manifest):
+        result.result = result.result.writable_manifest()
+    return jsonable_encoder(
+        result,
+        custom_encoder={
+            agate.Table: lambda tbl: list(map(dict, tbl.rows)),
+            VersionedSchema: lambda obj: obj.to_dict(),
+        },
+    )
+
+
+@app.post("/write_manifest")
+def write_manifest(
+    response: Response,
+    target_path: str | None = Query(None, description="Optional custom path for manifest.json"),
+    runner: DbtProject = Depends(get_runner),
+) -> ServerResetResult | ServerErrorContainer:
+    """Write the current manifest out to disk."""
+    try:
+        runner.write_manifest(target_path)
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+    return ServerResetResult(result="Manifest written.")
 
 
 def main() -> None:
