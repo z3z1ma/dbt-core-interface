@@ -18,7 +18,7 @@ import typing as t
 import uuid
 import weakref
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
