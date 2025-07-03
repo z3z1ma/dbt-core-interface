@@ -217,7 +217,13 @@ class DbtInterfaceClient:
         if raw_sql is not None and sql_path is None:
             data = raw_sql
             headers = {"Content-Type": "text/plain"}
-        resp = self._request("POST", "/api/v1/lint", params=params, data=data, headers=headers)
+        resp = self._request(
+            "POST" if data is not None else "GET",
+            "/api/v1/lint",
+            params=params,
+            data=data,
+            headers=headers,
+        )
         return ServerLintResult.model_validate(resp.json())
 
     def format_sql(
@@ -237,7 +243,13 @@ class DbtInterfaceClient:
         if raw_sql is not None and sql_path is None:
             data = raw_sql
             headers = {"Content-Type": "text/plain"}
-        resp = self._request("POST", "/api/v1/format", params=params, data=data, headers=headers)
+        resp = self._request(
+            "POST" if data is not None else "GET",
+            "/api/v1/format",
+            params=params,
+            data=data,
+            headers=headers,
+        )
         return ServerFormatResult.model_validate(resp.json())
 
     def parse_project(
@@ -289,6 +301,24 @@ class DbtInterfaceClient:
     snapshot = functools.partialmethod(command, "snapshot")
     source_freshness = functools.partialmethod(command, "source freshness")
     test = functools.partialmethod(command, "test")
+
+    def inject_state(self, directory: Path | str) -> dict[str, t.Any]:
+        """Inject manifest state for dbt deferral into the server."""
+        resp = self._request(
+            "GET",
+            "/api/v1/state",
+            json_payload={"directory": str(directory)},
+        )
+        if resp.ok:
+            return {}
+        return resp.json()
+
+    def clear_state(self) -> dict[str, t.Any]:
+        """Clear the deferral manifest state on the server."""
+        resp = self._request("DELETE", "/api/v1/state")
+        if resp.ok:
+            return {}
+        return resp.json()
 
     def status(self) -> dict[str, t.Any]:
         """Check server diagnostic status."""

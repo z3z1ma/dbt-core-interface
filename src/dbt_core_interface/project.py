@@ -801,7 +801,7 @@ class DbtProject:
         extra_config_path: Path | str | None = None,
         ignore_local_config: bool = False,
         fluff_conf: FluffConfig | None = None,
-    ) -> LintingRecord | None:
+    ) -> list[LintingRecord]:
         """Lint specified file or SQL string."""
         from sqlfluff.cli.commands import get_linter_and_formatter
 
@@ -815,15 +815,34 @@ class DbtProject:
         lint, _ = get_linter_and_formatter(fluff_conf)
 
         if sql is None:
-            # TODO: lint whole project
-            return
+
+            def _lint(node: ManifestNode) -> list[LintingRecord]:
+                records: list[LintingRecord] = []
+                try:
+                    if node.resource_type == "model":
+                        records = self.lint(
+                            Path(node.original_file_path),
+                            extra_config_path=extra_config_path,
+                            ignore_local_config=ignore_local_config,
+                            fluff_conf=fluff_conf,
+                        )
+                except Exception as e:
+                    logger.error(f"Error formatting node {node.name}: {e}")
+                return records
+
+            all_records: list[LintingRecord] = []
+            for records in self.pool.map(_lint, self.manifest.nodes.values()):
+                all_records.extend(records)
+
+            return all_records
         elif isinstance(sql, str):
             result = lint.lint_string_wrapped(sql)
         else:
+            if not sql.is_absolute() and not sql.exists():
+                sql = self.project_root / sql
             result = lint.lint_paths((str(sql),), ignore_files=False)
 
-        records = result.as_records()
-        return records[0] if records else None
+        return result.as_records()
 
     def format(
         self,
@@ -835,13 +854,6 @@ class DbtProject:
         """Format specified file or SQL string."""
         from sqlfluff.cli.commands import get_linter_and_formatter
         from sqlfluff.core import SQLLintError
-
-        logger.info(f"""format_command(
-        {self.project_root},
-        {str(sql)[:100]},
-        {extra_config_path},
-        {ignore_local_config})
-        """)
 
         fluff_conf = fluff_conf or self.get_sqlfluff_configuration(
             sql if isinstance(sql, Path) else None,
@@ -868,11 +880,27 @@ class DbtProject:
 
         result_sql = None
         if sql is None:
-            # TODO: format whole project
-            return True, result_sql
+
+            def _format(node: ManifestNode) -> bool:
+                success = True
+                try:
+                    if node.resource_type == "model":
+                        success, _ = self.format(
+                            Path(node.original_file_path),
+                            extra_config_path=extra_config_path,
+                            ignore_local_config=ignore_local_config,
+                            fluff_conf=fluff_conf,
+                        )
+                except Exception as e:
+                    logger.error(f"Error formatting node {node.name}: {e}")
+                    success = False
+                return success
+
+            return all(res for res in self.pool.map(_format, self.manifest.nodes.values())), None
         if isinstance(sql, str):
             logger.info(f"Formatting SQL string: {sql[:100]}")
             result = lint.lint_string_wrapped(sql, fname="stdin", fix=True)
+
             _, num_filtered_errors = result.count_tmp_prs_errors()
             result.discard_fixes_for_lint_errors_in_files_with_tmp_or_prs_errors()
             success = not num_filtered_errors
@@ -886,6 +914,8 @@ class DbtProject:
                     logger.info("No fixable errors in SQL string")
                     result_sql = sql
         else:
+            if not sql.is_absolute() and not sql.exists():
+                sql = self.project_root / sql
             logger.info(f"Formatting SQL file: {sql}")
             before_modified = datetime.fromtimestamp(sql.stat().st_mtime).strftime(
                 "%Y-%m-%d %H:%M:%S"
@@ -898,6 +928,7 @@ class DbtProject:
                 apply_fixes=True,
                 fix_even_unparsable=False,
             )
+
             _, num_filtered_errors = lint_result.count_tmp_prs_errors()
             lint_result.discard_fixes_for_lint_errors_in_files_with_tmp_or_prs_errors()
             success = not num_filtered_errors

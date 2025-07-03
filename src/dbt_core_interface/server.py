@@ -12,7 +12,7 @@ import os
 import time
 import typing as t
 import uuid
-from collections.abc import Awaitable
+from collections.abc import AsyncGenerator, Awaitable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -153,7 +153,6 @@ def _load_saved_state(runners: DbtProjectContainer) -> None:
 
 def _save_state(runners: DbtProjectContainer) -> None:
     """Persist all registered projects to disk."""
-    path = _get_state_file_path()
     state: list[dict[str, t.Any]] = []
     for path in runners.registered_projects():
         proj = runners.get_project(path)
@@ -170,6 +169,7 @@ def _save_state(runners: DbtProjectContainer) -> None:
                 "vars": cfg.vars,
             }
         )
+    path = _get_state_file_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -178,10 +178,10 @@ def _save_state(runners: DbtProjectContainer) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, t.Any]:
     """Lifespan context manager for FastAPI app."""
     _ = app
-    _load_saved_state(container := get_container())
+    _load_saved_state(container := _get_container())
     for project in container:
         _ = DbtProjectWatcher(project, start=True)
     try:
@@ -199,25 +199,25 @@ app = FastAPI(
 
 
 @app.middleware("http")
-async def add_exec_time(
+async def add_execution_time(
     request: Request, call_next: t.Callable[[Request], Awaitable[Response]]
 ) -> Response:
     """Middleware to measure execution time of requests."""
-    start = time.time()
+    start_time = time.time()
     response: Response = await call_next(request)
-    exec_time = time.time() - start
+    exec_time = time.time() - start_time
     response.headers["X-dbt-Exec-Time"] = f"{exec_time:.3f}"
     return response
 
 
-def get_container() -> DbtProjectContainer:
+def _get_container() -> DbtProjectContainer:
     """Get the DbtProjectContainer instance."""
     return DbtProjectContainer()
 
 
-def get_runner(
+def _get_runner(
     project_dir: str = Query(None, description="Project directory to use for the request."),
-    runners: DbtProjectContainer = Depends(get_container),
+    runners: DbtProjectContainer = Depends(_get_container),
 ) -> DbtProject:
     """Get the DbtProject runner based on the X-dbt-Project header."""
     runner = None
@@ -239,7 +239,7 @@ def get_runner(
     return runner
 
 
-def format_run_result(res: ExecutionResult) -> ServerRunResult:
+def _format_run_result(res: ExecutionResult) -> ServerRunResult:
     """Convert ExecutionResult to ServerRunResult."""
     table = res.table
     rows = [list(row) for row in table.rows]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
@@ -256,19 +256,19 @@ def run_sql(
     response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
     limit: int = Query(200, ge=1, le=1000, description="Limit the number of rows returned"),
-    path: str | None = Query(None),
-    runner: DbtProject = Depends(get_runner),
+    model_path: str | None = Query(None),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerRunResult | ServerErrorContainer:
     """Run raw SQL code against the registered dbt project."""
     _ = response
-    if path:
-        node = runner.get_node_by_path(path)
+    if model_path:
+        node = runner.get_node_by_path(model_path)
         if not node:
             response.status_code = 404
             return ServerErrorContainer(
                 error=ServerError(
                     code=ServerErrorCode.MissingRequiredParams,
-                    message=f"Model path not found in dbt manifest: {path}",
+                    message=f"Model path not found in dbt manifest: {model_path}",
                     data={},
                 )
             )
@@ -280,7 +280,6 @@ def run_sql(
             node.raw_code = orig_raw_sql
     else:
         comp_res = runner.compile_sql(raw_sql)
-    raw_sql = comp_res.compiled_code
     try:
         model_context = runner.generate_runtime_model_context(comp_res.node)
         query = runner.adapter.execute_macro(
@@ -293,7 +292,7 @@ def run_sql(
                 "limit": limit,
             },
         )
-        exec_res = runner.execute_sql(t.cast(str, query), compile=path is None)  # pyright: ignore[reportInvalidCast]
+        exec_res = runner.execute_sql(t.cast(str, query), compile=False)  # pyright: ignore[reportInvalidCast]
     except Exception as e:
         response.status_code = 500
         return ServerErrorContainer(
@@ -303,26 +302,26 @@ def run_sql(
                 data=getattr(e, "__dict__", {}),
             )
         )
-    return format_run_result(exec_res)
+    return _format_run_result(exec_res)
 
 
 @app.post("/api/v1/compile")
 def compile_sql(
     response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
-    path: str | None = Query(None),
-    runner: DbtProject = Depends(get_runner),
+    model_path: str | None = Query(None),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerCompileResult | ServerErrorContainer:
     """Compile raw SQL code without executing it."""
     try:
-        if path:
-            node = runner.get_node_by_path(path)
+        if model_path:
+            node = runner.get_node_by_path(model_path)
             if not node:
                 response.status_code = 404
                 return ServerErrorContainer(
                     error=ServerError(
                         code=ServerErrorCode.MissingRequiredParams,
-                        message=f"Model path not found: {path}",
+                        message=f"Model path not found: {model_path}",
                         data={},
                     )
                 )
@@ -354,7 +353,7 @@ def register_project(
     project_dir: str = Query(...),
     profiles_dir: str | None = Query(None),
     target: str | None = Query(None),
-    runners: DbtProjectContainer = Depends(get_container),
+    runners: DbtProjectContainer = Depends(_get_container),
 ) -> ServerRegisterResult | ServerErrorContainer:
     """Register a new dbt project with the server."""
     project_path = Path(project_dir).expanduser().resolve()
@@ -389,7 +388,7 @@ def register_project(
 def unregister_project(
     response: Response,
     project_dir: str = Query(..., description="Project directory to unregister."),
-    runners: DbtProjectContainer = Depends(get_container),
+    runners: DbtProjectContainer = Depends(_get_container),
 ) -> ServerUnregisterResult | ServerErrorContainer:
     """Remove a registered dbt project from the server."""
     if (
@@ -415,14 +414,13 @@ def unregister_project(
 
 
 @app.get("/api/v1/parse")
-@app.get("/api/v1/reset")
-def reset_project(
+def parse_project(
     response: Response,
     background_tasks: BackgroundTasks,
     target: str | None = Query(None),
     reset: bool = Query(False),
     write_manifest: bool = Query(False),
-    runner: DbtProject = Depends(get_runner),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerResetResult | ServerErrorContainer:
     """Re-parse the dbt project configuration and manifest."""
     sync = False
@@ -449,7 +447,7 @@ def reset_project(
 
 
 @app.get("/api/v1/status")
-def health_check(runner: DbtProject = Depends(get_runner)) -> dict[str, t.Any]:
+def status(runner: DbtProject = Depends(_get_runner)) -> dict[str, t.Any]:
     """Health check endpoint to verify server status."""
     return {
         "result": {
@@ -483,19 +481,23 @@ class ServerFormatResult(BaseModel):
     sql: str | None
 
 
+@app.post("/lint")  # legacy extension support
+@app.get("/api/v1/lint")
 @app.post("/api/v1/lint")
 def lint_sql(
     response: Response,
-    sql_path: str | None = Query(None),
-    extra_config_path: str | None = Query(None),
-    raw_sql: str | None = Body(None, media_type="text/plain"),
-    runner: DbtProject = Depends(get_runner),
+    sql_path: str | None = Query(None, description="Path to the SQL file to lint."),
+    extra_config_path: str | None = Query(None, description="Path to extra SQLFluff config file."),
+    raw_sql: str | None = Body(
+        None, media_type="text/plain", description="Raw SQL string to lint."
+    ),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerLintResult | ServerErrorContainer:
     """Lint SQL string or file via SQLFluff."""
-    record = None
+    records = []
     try:
         if sql_path:
-            record = runner.lint(
+            records = runner.lint(
                 sql=Path(sql_path),
                 extra_config_path=Path(extra_config_path) if extra_config_path else None,
             )
@@ -509,7 +511,7 @@ def lint_sql(
                         data={},
                     )
                 )
-            record = runner.lint(
+            records = runner.lint(
                 sql=raw_sql,
                 extra_config_path=Path(extra_config_path) if extra_config_path else None,
             )
@@ -522,16 +524,20 @@ def lint_sql(
                 data={},
             )
         )
-    return ServerLintResult(result=record["violations"] if record is not None else [])
+    return ServerLintResult(result=records)  # pyright: ignore[reportArgumentType]
 
 
+@app.post("/format")  # legacy extension support
+@app.get("/api/v1/format")
 @app.post("/api/v1/format")
 def format_sql(
     response: Response,
-    sql_path: str | None = Query(None),
-    extra_config_path: str | None = Query(None),
-    raw_sql: str | None = Body(None, media_type="text/plain"),
-    runner: DbtProject = Depends(get_runner),
+    sql_path: str | None = Query(None, description="Path to the SQL file to format."),
+    extra_config_path: str | None = Query(None, description="Path to extra SQLFluff config file."),
+    raw_sql: str | None = Body(
+        None, media_type="text/plain", description="Raw SQL string to format."
+    ),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerFormatResult | ServerErrorContainer:
     """Format SQL string or file via SQLFluff."""
     try:
@@ -572,7 +578,7 @@ def run_dbt_command(
     cmd: str = Query(..., description="The dbt command to run, e.g. 'run', 'test', 'build'"),
     args: list[str] | None = Body(None, description="List of positional args for the command"),
     kwargs: dict[str, t.Any] | None = Body(None, description="Keyword args for the command"),
-    runner: DbtProject = Depends(get_runner),
+    runner: DbtProject = Depends(_get_runner),
 ) -> dict[str, t.Any] | ServerErrorContainer:
     """Run an arbitrary dbt CLI command on the project."""
     import agate  # pyright: ignore[reportMissingTypeStubs]
@@ -601,11 +607,11 @@ def run_dbt_command(
     )
 
 
-@app.post("/api/v1/write-manifest")
+@app.get("/api/v1/write-manifest")
 def write_manifest(
     response: Response,
     target_path: str | None = Query(None, description="Optional custom path for manifest.json"),
-    runner: DbtProject = Depends(get_runner),
+    runner: DbtProject = Depends(_get_runner),
 ) -> ServerResetResult | ServerErrorContainer:
     """Write the current manifest out to disk."""
     try:
@@ -623,7 +629,7 @@ def write_manifest(
 
 
 @app.get("/api/v1/projects")
-def list_projects(runners: DbtProjectContainer = Depends(get_container)) -> dict[str, t.Any]:
+def list_projects(runners: DbtProjectContainer = Depends(_get_container)) -> dict[str, t.Any]:
     """List all registered dbt projects."""
     return {
         "projects": [
@@ -640,11 +646,12 @@ def list_projects(runners: DbtProjectContainer = Depends(get_container)) -> dict
     }
 
 
-@app.post("/api/v1/state")
+@app.get("/api/v1/state")
 def inject_state(
-    runner: DbtProject = Depends(get_runner), directory: str = Query(...)
+    runner: DbtProject = Depends(_get_runner),
+    directory: str = Query(..., description="Directory containing the deferral state files."),
 ) -> ServerErrorContainer | None:
-    """Enable dbt deferral by injecting the deferred state into the runner."""
+    """Enable dbt deferral by injecting the deferral state into the runner."""
     try:
         runner.inject_deferred_state(directory)
     except Exception as e:
@@ -661,8 +668,8 @@ def inject_state(
 
 
 @app.delete("/api/v1/state")
-def clear_state(runner: DbtProject = Depends(get_runner)) -> None:
-    """Clear the deferred state in the runner."""
+def clear_state(runner: DbtProject = Depends(_get_runner)) -> None:
+    """Clear the deferral state in the runner."""
     try:
         runner.clear_deferred_state()
     except Exception as e:
