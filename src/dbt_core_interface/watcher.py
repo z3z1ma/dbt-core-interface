@@ -76,6 +76,14 @@ class DbtProjectWatcher:
             self._thread.join(timeout=5.0)
         logger.info("Project watcher stopped for %s", self._project.project_root)
 
+    def __del__(self) -> None:
+        """Ensure the watcher is stopped when deleted."""
+        if self._running:
+            self.stop()
+        with self._instance_lock:
+            _ = self._instances.pop(id(self._project), None)
+            logger.debug("Watcher for project %s deleted", self._project.project_name)
+
     def _monitor_loop(self) -> None:
         """Run the main monitoring loop."""
         self._initialize_file_mtimes()
