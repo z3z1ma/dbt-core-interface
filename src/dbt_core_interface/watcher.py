@@ -152,7 +152,7 @@ class DbtProjectWatcher:
         """Stop all active watchers and clear the instances."""
         stopped = 0
         with cls._instance_lock:
-            for watcher in cls._instances.values():
+            for watcher in list(cls._instances.values()):
                 if watcher._running:
                     watcher.stop()
                     stopped += 1
@@ -178,7 +178,7 @@ class DbtProjectWatcher:
         """Stop the watcher for a specific project path."""
         with cls._instance_lock:
             path = Path(path).expanduser().resolve()
-            for project in (w._project for w in cls._instances.values()):
+            for project in (w._project for w in list(cls._instances.values())):
                 project_path = project.project_root
                 if path == project_path or project_path in path.parents:
                     watcher = cls._instances.pop(id(project))

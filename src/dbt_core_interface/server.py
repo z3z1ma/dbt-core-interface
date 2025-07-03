@@ -24,7 +24,6 @@ from fastapi import (
     Body,
     Depends,
     FastAPI,
-    Header,
     HTTPException,
     Query,
     Request,
@@ -56,6 +55,7 @@ class ServerErrorCode(int, Enum):
     ProjectNotRegistered = 4
     ProjectHeaderNotSupplied = 5
     MissingRequiredParams = 6
+    StateInjectionFailure = 7
 
 
 class ServerError(BaseModel):
@@ -216,19 +216,18 @@ def get_container() -> DbtProjectContainer:
 
 
 def get_runner(
-    x_dbt_project: str | None = Header(None),
+    project_dir: str = Query(None, description="Project directory to use for the request."),
     runners: DbtProjectContainer = Depends(get_container),
 ) -> DbtProject:
     """Get the DbtProject runner based on the X-dbt-Project header."""
-    project = x_dbt_project
     runner = None
-    if project:
-        runner = runners.find_project_in_tree(project)
+    if project_dir:
+        runner = runners.find_project_in_tree(project_dir)
     if not runner:
         runner = runners.get_default_project()
     if not runner:
         raise HTTPException(
-            status_code=400,
+            status_code=404,
             detail=ServerErrorContainer(
                 error=ServerError(
                     code=ServerErrorCode.ProjectNotRegistered,
@@ -252,11 +251,11 @@ def format_run_result(res: ExecutionResult) -> ServerRunResult:
     )
 
 
-@app.post("/run")
+@app.post("/api/v1/run")
 def run_sql(
     response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
-    limit: int = Query(200, ge=1),
+    limit: int = Query(200, ge=1, le=1000, description="Limit the number of rows returned"),
     path: str | None = Query(None),
     runner: DbtProject = Depends(get_runner),
 ) -> ServerRunResult | ServerErrorContainer:
@@ -279,11 +278,22 @@ def run_sql(
             comp_res = runner.compile_node(node)
         finally:
             node.raw_code = orig_raw_sql
-        raw_sql = comp_res.compiled_code
+    else:
+        comp_res = runner.compile_sql(raw_sql)
+    raw_sql = comp_res.compiled_code
     try:
-        # NOTE: this should have a dispatch based on dialect? or is there a dbt-ism for this?
-        query = f"SELECT * FROM (\n{raw_sql}\n) AS __server_query LIMIT {limit}"  # noqa: S608
-        exec_res = runner.execute_sql(query, compile=path is None)
+        model_context = runner.generate_runtime_model_context(comp_res.node)
+        query = runner.adapter.execute_macro(
+            macro_name="get_show_sql",
+            macro_resolver=runner.manifest,
+            context_override=model_context,
+            kwargs={
+                "compiled_code": model_context["compiled_code"],
+                "sql_header": model_context["config"].get("sql_header"),
+                "limit": limit,
+            },
+        )
+        exec_res = runner.execute_sql(t.cast(str, query), compile=path is None)  # pyright: ignore[reportInvalidCast]
     except Exception as e:
         response.status_code = 500
         return ServerErrorContainer(
@@ -296,7 +306,7 @@ def run_sql(
     return format_run_result(exec_res)
 
 
-@app.post("/compile")
+@app.post("/api/v1/compile")
 def compile_sql(
     response: Response,
     raw_sql: str = Body(..., media_type="text/plain"),
@@ -338,7 +348,7 @@ def compile_sql(
     return ServerCompileResult(result=result_sql)
 
 
-@app.post("/register")
+@app.get("/api/v1/register")
 def register_project(
     response: Response,
     project_dir: str = Query(...),
@@ -375,19 +385,19 @@ def register_project(
     )
 
 
-@app.post("/unregister")
+@app.delete("/api/v1/register")
 def unregister_project(
     response: Response,
-    project: str = Header(None, alias="X-dbt-Project"),
+    project_dir: str = Query(..., description="Project directory to unregister."),
     runners: DbtProjectContainer = Depends(get_container),
 ) -> ServerUnregisterResult | ServerErrorContainer:
     """Remove a registered dbt project from the server."""
     if (
-        not project
-        or (project_path := Path(project).expanduser().resolve())
+        not project_dir
+        or (project_path := Path(project_dir).expanduser().resolve())
         not in runners.registered_projects()
     ):
-        response.status_code = 400
+        response.status_code = 404
         return ServerErrorContainer(
             error=ServerError(
                 code=ServerErrorCode.ProjectNotRegistered,
@@ -400,12 +410,12 @@ def unregister_project(
     if dbt_project:
         DbtProjectWatcher.stop_path(dbt_project.project_root)
     return ServerUnregisterResult(
-        removed=project, projects=list(map(str, runners.registered_projects()))
+        removed=project_path.name, projects=list(map(str, runners.registered_projects()))
     )
 
 
-@app.get("/parse")
-@app.get("/reset")
+@app.get("/api/v1/parse")
+@app.get("/api/v1/reset")
 def reset_project(
     response: Response,
     background_tasks: BackgroundTasks,
@@ -438,8 +448,7 @@ def reset_project(
     return ServerResetResult(result="Project re-parsed successfully.")
 
 
-@app.get("/health")
-@app.get("/api/health")
+@app.get("/api/v1/status")
 def health_check(runner: DbtProject = Depends(get_runner)) -> dict[str, t.Any]:
     """Health check endpoint to verify server status."""
     return {
@@ -455,8 +464,7 @@ def health_check(runner: DbtProject = Depends(get_runner)) -> dict[str, t.Any]:
     }
 
 
-@app.get("/heartbeat")
-@app.get("/api/heartbeat")
+@app.get("/api/v1/heartbeat")
 def heartbeat() -> dict[str, t.Any]:
     """Heartbeat endpoint to check server availability."""
     return {"result": {"status": "ready"}}
@@ -475,7 +483,7 @@ class ServerFormatResult(BaseModel):
     sql: str | None
 
 
-@app.post("/lint")
+@app.post("/api/v1/lint")
 def lint_sql(
     response: Response,
     sql_path: str | None = Query(None),
@@ -517,7 +525,7 @@ def lint_sql(
     return ServerLintResult(result=record["violations"] if record is not None else [])
 
 
-@app.post("/format")
+@app.post("/api/v1/format")
 def format_sql(
     response: Response,
     sql_path: str | None = Query(None),
@@ -558,7 +566,7 @@ def format_sql(
     return ServerFormatResult(result=success, sql=formatted)
 
 
-@app.post("/command")
+@app.post("/api/v1/command")
 def run_dbt_command(
     response: Response,
     cmd: str = Query(..., description="The dbt command to run, e.g. 'run', 'test', 'build'"),
@@ -593,7 +601,7 @@ def run_dbt_command(
     )
 
 
-@app.post("/write_manifest")
+@app.post("/api/v1/write-manifest")
 def write_manifest(
     response: Response,
     target_path: str | None = Query(None, description="Optional custom path for manifest.json"),
@@ -612,6 +620,62 @@ def write_manifest(
             )
         )
     return ServerResetResult(result="Manifest written.")
+
+
+@app.get("/api/v1/projects")
+def list_projects(runners: DbtProjectContainer = Depends(get_container)) -> dict[str, t.Any]:
+    """List all registered dbt projects."""
+    return {
+        "projects": [
+            {
+                "name": runner.project_name,
+                "path": str(runner.project_root),
+                "target": runner.runtime_config.target_name,
+                "profiles_dir": runner.args.profiles_dir,
+                "threads": runner.args.threads,
+                "vars": runner.args.vars,
+            }
+            for runner in runners
+        ]
+    }
+
+
+@app.post("/api/v1/state")
+def inject_state(
+    runner: DbtProject = Depends(get_runner), directory: str = Query(...)
+) -> ServerErrorContainer | None:
+    """Enable dbt deferral by injecting the deferred state into the runner."""
+    try:
+        runner.inject_deferred_state(directory)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.StateInjectionFailure,
+                    message=str(e),
+                    data=getattr(e, "__dict__", {}),
+                )
+            ).model_dump(),
+        ) from e
+
+
+@app.delete("/api/v1/state")
+def clear_state(runner: DbtProject = Depends(get_runner)) -> None:
+    """Clear the deferred state in the runner."""
+    try:
+        runner.clear_deferred_state()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.StateInjectionFailure,
+                    message=str(e),
+                    data=getattr(e, "__dict__", {}),
+                )
+            ).model_dump(),
+        ) from e
 
 
 def main() -> None:

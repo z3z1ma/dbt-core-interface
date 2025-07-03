@@ -1,9 +1,13 @@
 # pyright: reportAny=false
 """dbt-core-interface client for interacting with a dbt-core-interface FastAPI server."""
 
+from __future__ import annotations
+
 import functools
 import logging
 import typing as t
+from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
 
@@ -25,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @t.final
-class ServerError(Exception):
+class ServerErrorException(Exception):  # noqa: N818
     """Custom exception for handling server errors from the dbt-core-interface."""
 
     def __init__(self, error: _ServerError) -> None:
@@ -54,30 +58,48 @@ class DbtInterfaceClient:
         target: str | None = None,
         base_url: str = "http://localhost:8581",
         timeout: float | tuple[float, float] = 10.0,
+        unregister_on_close: bool = True,
     ) -> None:
         """Initialize the client with the base URL and optional project name."""
-        self.project_dir = project_dir
+        self.project_dir = Path(project_dir).resolve()
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "Content-Type": "application/json",
+                "User-Agent": "dbt-core-interface-client/1.0",
+                "X-dbt-Project": self.project_dir.name,
+            }
+        )
+        self.unregister_on_close = unregister_on_close
         response = self._register_project(profiles_dir=profiles_dir, target=target)
         logger.info("Registered project '%s' with server at %s", response.added, self.base_url)
 
-    def __del__(self) -> None:
+    def close(self) -> None:
         """Unregister the project on client destruction."""
-        try:
-            response = self._unregister_project()
-            logger.info(
-                "Unregistered project '%s' with server at %s", response.removed, self.base_url
-            )
-        except Exception as e:
-            logger.error("Failed to unregister project '%s': %s", self.project_dir, e)
+        if self.unregister_on_close:
+            try:
+                response = self._unregister_project()
+                logger.info(
+                    "Unregistered project '%s' with server at %s", response.removed, self.base_url
+                )
+            except Exception as e:
+                logger.error("Failed to unregister project '%s': %s", self.project_dir, e)
 
-    def _headers(self) -> dict[str, str]:
-        return {
-            "User-Agent": "dbt-core-interface-client/1.0",
-            "X-dbt-Project": self.project_dir,
-        }
+    def __enter__(self) -> DbtInterfaceClient:
+        """Context manager for the client to ensure proper cleanup."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: Exception | None,
+        traceback: t.Any | None,
+    ) -> None:
+        """Close the client and unregister the project."""
+        self.close()
+        self.session.close()
 
     def _request(
         self,
@@ -88,8 +110,11 @@ class DbtInterfaceClient:
         json_payload: t.Any = None,
         headers: dict[str, str] | None = None,
     ) -> requests.Response:
-        url = f"{self.base_url}{path}"
-        headers = {**self._headers(), **(headers or {})}
+        url = urljoin(self.base_url, path)
+        headers = headers or {}
+        params = params or {}
+        params["project_dir"] = str(self.project_dir)
+
         logger.debug(
             "Requesting %s %s with params=%s, data=%s, json=%s, headers=%s",
             method,
@@ -108,13 +133,15 @@ class DbtInterfaceClient:
             headers=headers,
             timeout=self.timeout,
         )
+
         if resp.status_code >= 400:
             try:
                 err = ServerErrorContainer.model_validate(resp.json())
-                raise ServerError(err.error)
+                raise ServerErrorException(err.error)
             except ValueError as e:
                 logger.error("Failed to parse error response: %s", e)
                 resp.raise_for_status()
+
         return resp
 
     def _register_project(
@@ -123,32 +150,32 @@ class DbtInterfaceClient:
         target: str | None = None,
     ) -> ServerRegisterResult:
         """Register a new dbt project."""
-        params: dict[str, t.Any] = {"project_dir": self.project_dir}
+        params: dict[str, t.Any] = {}
         if profiles_dir is not None:
             params["profiles_dir"] = profiles_dir
         if target is not None:
             params["target"] = target
-        resp = self._request("POST", "/register", params=params)
+        resp = self._request("GET", "/api/v1/register", params=params)
         return ServerRegisterResult.model_validate(resp.json())
 
     def _unregister_project(self) -> ServerUnregisterResult:
         """Unregister the current project."""
-        resp = self._request("POST", "/unregister")
+        resp = self._request("DELETE", "/api/v1/register")
         return ServerUnregisterResult.model_validate(resp.json())
 
     def run_sql(
         self,
         raw_sql: str,
         limit: int = 200,
-        path: str | None = None,
+        model_path: str | None = None,
     ) -> ServerRunResult:
         """Execute raw SQL against the registered dbt project."""
         params: dict[str, t.Any] = {"limit": limit}
-        if path is not None:
-            params["path"] = path
+        if model_path is not None:
+            params["model_path"] = model_path
         resp = self._request(
             method="POST",
-            path="/run",
+            path="/api/v1/run",
             data=raw_sql,
             headers={"Content-Type": "text/plain"},
             params=params,
@@ -158,47 +185,20 @@ class DbtInterfaceClient:
     def compile_sql(
         self,
         raw_sql: str,
-        path: str | None = None,
+        model_path: str | None = None,
     ) -> ServerCompileResult:
         """Compile raw SQL without executing it."""
         params: dict[str, t.Any] = {}
-        if path is not None:
-            params["path"] = path
+        if model_path is not None:
+            params["model_path"] = model_path
         resp = self._request(
             method="POST",
-            path="/compile",
+            path="/api/v1/compile",
             data=raw_sql,
             headers={"Content-Type": "text/plain"},
             params=params,
         )
         return ServerCompileResult.model_validate(resp.json())
-
-    def reset_project(
-        self,
-        target: str | None = None,
-        reset: bool = False,
-        write_manifest: bool = False,
-    ) -> ServerResetResult:
-        """Re-parse the dbt project."""
-        params: dict[str, t.Any] = {}
-        if target is not None:
-            params["target"] = target
-        if reset:
-            params["reset"] = reset
-        if write_manifest:
-            params["write_manifest"] = write_manifest
-        resp = self._request("GET", "/reset", params=params)
-        return ServerResetResult.model_validate(resp.json())
-
-    def health_check(self) -> dict[str, t.Any]:
-        """Check server health and project status."""
-        resp = self._request("GET", "/health")
-        return resp.json()
-
-    def heartbeat(self) -> dict[str, t.Any]:
-        """Check server availability."""
-        resp = self._request("GET", "/heartbeat")
-        return resp.json()
 
     def lint_sql(
         self,
@@ -217,7 +217,7 @@ class DbtInterfaceClient:
         if raw_sql is not None and sql_path is None:
             data = raw_sql
             headers = {"Content-Type": "text/plain"}
-        resp = self._request("POST", "/lint", params=params, data=data, headers=headers)
+        resp = self._request("POST", "/api/v1/lint", params=params, data=data, headers=headers)
         return ServerLintResult.model_validate(resp.json())
 
     def format_sql(
@@ -237,8 +237,25 @@ class DbtInterfaceClient:
         if raw_sql is not None and sql_path is None:
             data = raw_sql
             headers = {"Content-Type": "text/plain"}
-        resp = self._request("POST", "/format", params=params, data=data, headers=headers)
+        resp = self._request("POST", "/api/v1/format", params=params, data=data, headers=headers)
         return ServerFormatResult.model_validate(resp.json())
+
+    def parse_project(
+        self,
+        target: str | None = None,
+        reset: bool = False,
+        write_manifest: bool = False,
+    ) -> ServerResetResult:
+        """Re-parse the dbt project."""
+        params: dict[str, t.Any] = {}
+        if target is not None:
+            params["target"] = target
+        if reset:
+            params["reset"] = reset
+        if write_manifest:
+            params["write_manifest"] = write_manifest
+        resp = self._request("GET", "/api/v1/parse", params=params)
+        return ServerResetResult.model_validate(resp.json())
 
     def command(
         self,
@@ -250,7 +267,7 @@ class DbtInterfaceClient:
         payload: dict[str, t.Any] = {"args": args, "kwargs": kwargs}
         resp = self._request(
             method="POST",
-            path="/command",
+            path="/api/v1/command",
             json_payload=payload,
             params={"cmd": cmd},
         )
@@ -272,3 +289,14 @@ class DbtInterfaceClient:
     snapshot = functools.partialmethod(command, "snapshot")
     source_freshness = functools.partialmethod(command, "source freshness")
     test = functools.partialmethod(command, "test")
+
+    def status(self) -> dict[str, t.Any]:
+        """Check server diagnostic status."""
+        resp = self._request("GET", "/api/v1/status")
+        return resp.json()
+
+    def heartbeat(self) -> bool:
+        """Check server availability."""
+        resp = self._request("GET", "/api/v1/heartbeat")
+        pulse = resp.json()
+        return pulse["result"]["status"] == "ready"

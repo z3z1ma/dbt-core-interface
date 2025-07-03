@@ -44,6 +44,7 @@ from dbt.config.runtime import RuntimeConfig
 from dbt.context.providers import generate_runtime_macro_context, generate_runtime_model_context
 from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ManifestNode, SourceDefinition
+from dbt.contracts.state import PreviousState
 from dbt.flags import set_from_args
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.read_files import FileDiff, InputFile, ReadFilesFromFileSystem
@@ -919,3 +920,21 @@ class DbtProject:
             f"format_command returning success={success}, result_sql={result_sql[:100] if result_sql is not None else 'n/a'}"
         )
         return success, result_sql
+
+    def inject_deferred_state(self, state_path: Path | str) -> None:
+        """Merge the manifest from a previous state artifact for dbt deferral behavior."""
+        previous_state = PreviousState(
+            state_path=Path(state_path).resolve(),
+            target_path=self.target_path,
+            project_root=self.project_root,
+        )
+        if previous_state.manifest is None:
+            logger.warning(f"No manifest found in previous state at {state_path}")
+            return
+        self.manifest.merge_from_artifact(previous_state.manifest)
+
+    def clear_deferred_state(self) -> None:
+        """Clear the deferred state from the manifest."""
+        for node in self.manifest.nodes.values():
+            if hasattr(node, "defer_relation"):
+                node.defer_relation = None  # pyright: ignore[reportAttributeAccessIssue]
