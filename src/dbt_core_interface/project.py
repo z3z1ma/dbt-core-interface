@@ -281,6 +281,32 @@ class DbtProject:
 
             CONTAINER.add_project(self)
 
+    def __del__(self) -> None:
+        """Clean up resources on deletion."""
+        from dbt_core_interface.container import DbtProjectContainer
+        from dbt_core_interface.watcher import DbtProjectWatcher
+
+        with self._adapter_lock:
+            if self._adapter:
+                self._adapter.connections.cleanup_all()
+                _ = atexit.unregister(self._adapter.connections.cleanup_all)
+            self._adapter = None
+
+        if self._pool:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            self._pool = None
+
+        with contextlib.suppress(Exception):
+            container = DbtProjectContainer()
+            _ = container.drop_project(self.project_root)
+
+        with contextlib.suppress(Exception):
+            watcher = DbtProjectWatcher(self)
+            del watcher
+
+        with self._instance_lock:
+            _ = self._instances.pop(self.project_root, None)
+
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the DbtProject instance."""
         return f"DbtProject(name={self.project_name}, root={self.project_root}, last_parsed_at={self._last_parsed_at})"
