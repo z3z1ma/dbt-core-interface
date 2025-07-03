@@ -1,3 +1,4 @@
+# pyright: reportCallIssue=false
 """Fixtures for dbt templating tests."""
 
 import typing as t

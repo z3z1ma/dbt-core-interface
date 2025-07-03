@@ -8,6 +8,7 @@ import threading
 import typing as t
 from collections.abc import Generator
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 if t.TYPE_CHECKING:
     from dbt_core_interface.project import DbtConfiguration, DbtProject
@@ -24,7 +25,7 @@ class DbtProjectContainer:
     _instance: DbtProjectContainer | None = None
     _instance_lock: threading.Lock = threading.Lock()
 
-    _projects: dict[Path, DbtProject] = {}
+    _projects: WeakValueDictionary[Path, DbtProject] = WeakValueDictionary()
     _default_project: Path | None = None
     _lock = threading.RLock()
 
@@ -108,7 +109,6 @@ class DbtProjectContainer:
             project = self._projects.pop(p := Path(path).expanduser().resolve(), None)
             if project is None:
                 return
-            project.adapter.connections.cleanup_all()
             if p == self._default_project:
                 self._default_project = next(iter(self._projects), None)
             return project
@@ -143,6 +143,11 @@ class DbtProjectContainer:
             raise KeyError(f"No project registered under '{path}'.")
         return project
 
+    def __delitem__(self, path: Path | str) -> None:
+        """Unregister the project at the given path."""
+        with self._lock:
+            _ = self.drop_project(path)
+
     def __contains__(self, path: Path | str) -> bool:
         """Check if a project is registered at the given path."""
         return path in self._projects
@@ -157,8 +162,8 @@ class DbtProjectContainer:
         if len(self._projects) == 0:
             return s.format("<empty>")
         return s.format(
-            "\n  ",
-            "\n  ".join(
+            "\n  "
+            + "\n  ".join(
                 f"DbtProject(name={proj.project_name}, root={proj.project_root}),"
                 for proj in self._projects.values()
             )

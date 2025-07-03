@@ -16,11 +16,14 @@ import threading
 import time
 import typing as t
 import uuid
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
+from dataclasses import replace as dc_replace
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 import dbt.adapters.factory
 
@@ -45,7 +48,7 @@ from dbt.context.providers import generate_runtime_macro_context, generate_runti
 from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ManifestNode, SourceDefinition
 from dbt.contracts.state import PreviousState
-from dbt.flags import set_from_args
+from dbt.flags import get_flag_dict, set_from_args
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.read_files import FileDiff, InputFile, ReadFilesFromFileSystem
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
@@ -79,7 +82,7 @@ add_logger_to_manager(
     LoggerConfig(name=__name__, logger=logger),
 )
 
-__all__ = ["DbtProject", "DbtConfiguration", "ExecutionResult", "CompilationResult"]
+__all__ = ["DbtProject", "DbtConfiguration"]
 
 T = t.TypeVar("T")
 
@@ -91,39 +94,49 @@ else:
     P = t_ext.ParamSpec("P")
 
 
-def _get_project_dir() -> Path:
+def _get_project_dir() -> str:
     """Get the default project directory following dbt heuristics."""
     if "DBT_PROJECT_DIR" in os.environ:
-        return Path(os.environ["DBT_PROJECT_DIR"]).expanduser().resolve()
+        p = Path(os.environ["DBT_PROJECT_DIR"]).expanduser().resolve()
+        return str(p)
     cwd = Path.cwd()
     for path in [cwd, *list(cwd.parents)]:
         if (path / "dbt_project.yml").exists():
-            return path.resolve()
+            return str(path.resolve())
         if path == Path.home():
             break
-    return cwd.resolve()
+    return str(cwd.resolve())
 
 
-def _get_profiles_dir(project_dir: Path | str | None = None) -> Path:
+def _get_profiles_dir(project_dir: Path | str | None = None) -> str:
     """Get the default profiles directory following dbt heuristics."""
     if "DBT_PROFILES_DIR" in os.environ:
-        return Path(os.environ["DBT_PROFILES_DIR"]).expanduser().resolve()
+        p = Path(os.environ["DBT_PROFILES_DIR"]).expanduser().resolve()
+        return str(p)
     _project_dir = Path(project_dir or _get_project_dir())
     if _project_dir.is_dir() and _project_dir.joinpath("profiles.yml").exists():
-        return _project_dir
-    return Path.home() / ".dbt"
+        return str(_project_dir.resolve())
+    home = Path.home()
+    return str(home / ".dbt")
+
+
+DEFAULT_PROFILES_DIR = _get_profiles_dir()
 
 
 @dataclass(frozen=True)
 class DbtConfiguration:
     """Minimal dbt configuration."""
 
-    project_dir: str = field(default_factory=lambda: str(_get_project_dir()))
-    profiles_dir: str = field(default_factory=lambda: str(_get_profiles_dir()))
-    target: str | None = field(default_factory=lambda: os.getenv("DBT_TARGET"))
+    project_dir: str = field(default_factory=_get_project_dir)
+    profiles_dir: str = field(default_factory=_get_profiles_dir)
+    target: str | None = field(
+        default_factory=functools.partial(os.getenv, "DBT_TARGET"),
+    )
+    profile: str | None = field(
+        default_factory=functools.partial(os.getenv, "DBT_PROFILE", "default"),
+    )
     threads: int = 1
     vars: dict[str, t.Any] = field(default_factory=dict)
-    profile: str | None = field(default_factory=lambda: os.getenv("DBT_PROFILE"))
 
     quiet: bool = True
     use_experimental_parser: bool = True
@@ -138,6 +151,13 @@ class DbtConfiguration:
     def single_threaded(self) -> bool:
         """Return whether the project is single-threaded."""
         return self.threads <= 1
+
+    def __getattr__(self, item: str) -> t.Any:
+        """Get attribute with fallback to environment variables."""
+        d = get_flag_dict()
+        if item in d:
+            return d[item]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{item}'")
 
 
 _use_slots = {}
@@ -182,7 +202,7 @@ class DbtProject:
 
     ADAPTER_TTL: int = 3600
 
-    _instances: dict[Path, DbtProject] = {}
+    _instances: WeakValueDictionary[Path, DbtProject] = WeakValueDictionary()
     _instance_lock: threading.Lock = threading.Lock()
 
     def __new__(
@@ -204,22 +224,11 @@ class DbtProject:
                 project = super().__new__(cls)
                 cls._instances[p] = project
             else:
-                if profiles_dir is None:
-                    profiles_dir = str(_get_profiles_dir(project_dir).resolve())
-                if (
-                    (target and target != project.runtime_config.target_name)
-                    or (vars and vars != project.args.vars)
-                    or Path(profiles_dir).expanduser().resolve() != project.profiles_yml.parent
+                if (target and target != project.runtime_config.target_name) or (
+                    vars and vars != project.args.vars
                 ):
-                    project.args = DbtConfiguration(
-                        target=target,
-                        profiles_dir=profiles_dir,
-                        project_dir=str(p),
-                        threads=threads,
-                        vars=vars or {},
-                    )
-                    project.parse_project(reparse_configuration=True)
-        return project
+                    project.set_args(target=target, vars=vars or {}, threads=threads)
+            return project
 
     def __init__(
         self,
@@ -236,11 +245,8 @@ class DbtProject:
         if hasattr(self, "_args"):
             return
 
-        if project_dir is not None and profiles_dir is None:
-            profiles_dir = str(_get_profiles_dir(project_dir).resolve())
-
-        project_dir = project_dir or str(_get_project_dir())
-        profiles_dir = profiles_dir or str(_get_project_dir())
+        project_dir = project_dir or _get_profiles_dir()
+        profiles_dir = profiles_dir or _get_profiles_dir(project_dir)
 
         self._args = DbtConfiguration(
             target=target,
@@ -281,31 +287,25 @@ class DbtProject:
 
             CONTAINER.add_project(self)
 
-    def __del__(self) -> None:
-        """Clean up resources on deletion."""
-        from dbt_core_interface.container import DbtProjectContainer
-        from dbt_core_interface.watcher import DbtProjectWatcher
+        ref = weakref.ref(self)
 
-        with self._adapter_lock:
-            if self._adapter:
-                self._adapter.connections.cleanup_all()
-                _ = atexit.unregister(self._adapter.connections.cleanup_all)
-            self._adapter = None
+        def finalizer() -> None:
+            from dbt_core_interface.container import CONTAINER
 
-        if self._pool:
-            self._pool.shutdown(wait=False, cancel_futures=True)
-            self._pool = None
+            if (instance := ref()) is not None:
+                with DbtProject._instance_lock:
+                    del DbtProject._instances[instance.project_root]
 
-        with contextlib.suppress(Exception):
-            container = DbtProjectContainer()
-            _ = container.drop_project(self.project_root)
+                if instance._adapter:
+                    atexit.unregister(instance._adapter.connections.cleanup_all)
+                    instance._adapter.connections.cleanup_all()
 
-        with contextlib.suppress(Exception):
-            watcher = DbtProjectWatcher(self)
-            del watcher
+                if instance._pool:
+                    instance._pool.shutdown(wait=True, cancel_futures=True)
 
-        with self._instance_lock:
-            _ = self._instances.pop(self.project_root, None)
+                del CONTAINER[instance.project_root]
+
+        self._finalize = weakref.finalize(self, finalizer)
 
     def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
         """Return a string representation of the DbtProject instance."""
@@ -322,6 +322,7 @@ class DbtProject:
             project_dir=config.project_dir,
             threads=config.threads,
             vars=config.vars,
+            profile=config.profile,
         )
 
     @property
@@ -333,12 +334,14 @@ class DbtProject:
     def args(self, value: DbtConfiguration | dict[str, t.Any]) -> None:  # pyright: ignore[reportPropertyTypeMismatch]
         """Set the args for the DbtProject instance and update runtime config."""
         if isinstance(value, dict):
-            merged_args = asdict(self._args)
-            merged_args.update(value)
-            value = DbtConfiguration(**merged_args)
+            value = dc_replace(self._args, **value)
         set_from_args(value, None)  # pyright: ignore[reportArgumentType]
         self.parse_project(reparse_configuration=True)
         self._args = value
+
+    def set_args(self, **kwargs: t.Any) -> None:
+        """Set the args for the DbtProject instance."""
+        self.args = kwargs
 
     @property
     def adapter(self) -> BaseAdapter:
@@ -440,7 +443,7 @@ class DbtProject:
                     self._pool = None
 
                 self._adapter.connections.cleanup_all()
-                _ = atexit.unregister(self._adapter.connections.cleanup_all)
+                atexit.unregister(self._adapter.connections.cleanup_all)
 
         adapter_cls = get_adapter_class_by_name(self.runtime_config.credentials.type)
         self._adapter = t.cast(

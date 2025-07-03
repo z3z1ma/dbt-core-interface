@@ -1,4 +1,4 @@
-# pyright: reportImportCycles=false
+# pyright: reportImportCycles=false, reportAny=false
 """Filesystem watcher for dbt projects."""
 
 from __future__ import annotations
@@ -6,7 +6,9 @@ from __future__ import annotations
 import logging
 import threading
 import typing as t
+import weakref
 from pathlib import Path
+from weakref import ReferenceType, WeakKeyDictionary
 
 if t.TYPE_CHECKING:
     from dbt_core_interface.project import DbtProject
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class DbtProjectWatcher:
     """Watch dbt files for changes and automatically update the manifest."""
 
-    _instances: dict[int, DbtProjectWatcher] = {}
+    _instances: WeakKeyDictionary[DbtProject, DbtProjectWatcher] = WeakKeyDictionary()
     _instance_lock: threading.Lock = threading.Lock()
 
     def __new__(
@@ -28,10 +30,10 @@ class DbtProjectWatcher:
     ) -> DbtProjectWatcher:
         """Ensure only one instance of DbtProjectWatcher per project root."""
         with cls._instance_lock:
-            watcher = cls._instances.get(id(project))
+            watcher = cls._instances.get(project)
             if not watcher:
                 watcher = super().__new__(cls)
-                cls._instances[id(project)] = watcher
+                cls._instances[project] = watcher
         return watcher
 
     def __init__(
@@ -41,7 +43,7 @@ class DbtProjectWatcher:
         if hasattr(self, "_project"):
             return
 
-        self._project = project
+        self._project_ref: ReferenceType[DbtProject] = weakref.ref(project)
         self.check_interval = check_interval
 
         self.reader = project.create_reader()
@@ -54,16 +56,41 @@ class DbtProjectWatcher:
         if start:
             self.start()
 
+        ref = weakref.ref(self)
+
+        def finalizer() -> None:
+            """Clean up the instance when it is no longer referenced."""
+            if (instance := ref()) is not None:
+                instance.stop()
+                with DbtProjectWatcher._instance_lock:
+                    proj = instance._project_ref()
+                    if proj is not None:
+                        _ = DbtProjectWatcher._instances.pop(proj, None)
+
+        self._finalize = weakref.finalize(self, finalizer)
+
+    @property
+    def _project(self) -> DbtProject | None:
+        """Unmarshal the project reference."""
+        return self._project_ref()
+
+    @property
+    def _project_or_raise(self) -> DbtProject:
+        """Unmarshal the project reference or raise an error if invalid."""
+        project = self._project_ref()
+        if not project:
+            raise RuntimeError("Project reference is no longer valid.")
+        return project
+
     def start(self) -> None:
         """Start monitoring files for changes."""
-        if self._running:
+        if self._running or not self._project:
             return
-
         self._running = True
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
-        logger.info("Project watcher started for %s", self._project.project_root)
+        logger.info("Project watcher started for %s", self._project_or_raise.project_root)
 
     def stop(self) -> None:
         """Stop monitoring files."""
@@ -74,22 +101,17 @@ class DbtProjectWatcher:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5.0)
-        logger.info("Project watcher stopped for %s", self._project.project_root)
 
-    def __del__(self) -> None:
-        """Ensure the watcher is stopped when deleted."""
-        if self._running:
-            self.stop()
-        with self._instance_lock:
-            _ = self._instances.pop(id(self._project), None)
-            logger.debug("Watcher for project %s deleted", self._project.project_name)
+        logger.info("Project watcher stopped for %s", self._project_or_raise.project_root)
 
     def _monitor_loop(self) -> None:
         """Run the main monitoring loop."""
         self._initialize_file_mtimes()
-        self._project.set_invocation_context()
+        self._project_or_raise.set_invocation_context()
 
         while self._running and not self._stop_event.is_set():
+            if self._project is None:
+                break
             try:
                 change_level = self._check_for_changes()
                 if change_level:
@@ -103,12 +125,16 @@ class DbtProjectWatcher:
 
     def _initialize_file_mtimes(self) -> None:
         """Initialize the file modification time tracking."""
-        for f_proxy in self._project.manifest.files.values():
+        for f_proxy in self._project_or_raise.manifest.files.values():
             path = Path(f_proxy.path.absolute_path)
             if path.exists():
                 self._mtimes[path] = path.stat().st_mtime
-        self._mtimes[self._project.dbt_project_yml] = self._project.dbt_project_yml.stat().st_mtime
-        self._mtimes[self._project.profiles_yml] = self._project.profiles_yml.stat().st_mtime
+        self._mtimes[self._project_or_raise.dbt_project_yml] = (
+            self._project_or_raise.dbt_project_yml.stat().st_mtime
+        )
+        self._mtimes[self._project_or_raise.profiles_yml] = (
+            self._project_or_raise.profiles_yml.stat().st_mtime
+        )
         logger.debug(f"Initialized tracking for {len(self._mtimes)} files")
 
     def _check_for_changes(self) -> int:
@@ -117,7 +143,7 @@ class DbtProjectWatcher:
         A return value of 0 means no changes, 1 means files were added/removed, and 2 means
         a configuration file was modified (dbt_project.yml or profiles.yml).
         """
-        for path in (self._project.dbt_project_yml, self._project.profiles_yml):
+        for path in (self._project_or_raise.dbt_project_yml, self._project_or_raise.profiles_yml):
             try:
                 current_mtime = path.stat().st_mtime if path.exists() else 0.0
                 stamped_mtime = self._mtimes.get(path)
@@ -172,7 +198,7 @@ class DbtProjectWatcher:
     def stop_project(cls, project: DbtProject) -> None:
         """Stop the watcher for a specific project."""
         with cls._instance_lock:
-            watcher = cls._instances.pop(id(project), None)
+            watcher = cls._instances.pop(project, None)
             if watcher:
                 if watcher._running:
                     watcher.stop()
@@ -186,10 +212,12 @@ class DbtProjectWatcher:
         """Stop the watcher for a specific project path."""
         with cls._instance_lock:
             path = Path(path).expanduser().resolve()
-            for project in (w._project for w in list(cls._instances.values())):
+            for project in (
+                watch._project for watch in list(cls._instances.values()) if watch._project
+            ):
                 project_path = project.project_root
                 if path == project_path or project_path in path.parents:
-                    watcher = cls._instances.pop(id(project))
+                    watcher = cls._instances.pop(project)
                     watcher.stop()
                 else:
                     logger.warning(f"No watcher found for project at {path}")
