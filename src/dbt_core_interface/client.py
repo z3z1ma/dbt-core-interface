@@ -135,12 +135,14 @@ class DbtInterfaceClient:
         )
 
         if resp.status_code >= 400:
+            d = resp.json()
+            logger.error(d)
             try:
-                err = ServerErrorContainer.model_validate(resp.json())
+                err = ServerErrorContainer.model_validate(d)
                 raise ServerErrorException(err.error)
-            except ValueError as e:
-                logger.error("Failed to parse error response: %s", e)
-                resp.raise_for_status()
+            except ValueError:
+                pass
+            resp.raise_for_status()
 
         return resp
 
@@ -307,17 +309,13 @@ class DbtInterfaceClient:
         resp = self._request(
             "GET",
             "/api/v1/state",
-            json_payload={"directory": str(directory)},
+            params={"directory": str(directory)},
         )
-        if resp.ok:
-            return {}
         return resp.json()
 
     def clear_state(self) -> dict[str, t.Any]:
         """Clear the deferral manifest state on the server."""
         resp = self._request("DELETE", "/api/v1/state")
-        if resp.ok:
-            return {}
         return resp.json()
 
     def status(self) -> dict[str, t.Any]:

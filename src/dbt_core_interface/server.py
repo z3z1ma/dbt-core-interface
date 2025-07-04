@@ -180,15 +180,17 @@ def _save_state(runners: DbtProjectContainer) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, t.Any]:
     """Lifespan context manager for FastAPI app."""
-    _ = app
     _load_saved_state(container := _get_container())
+    app.state._p_references = {}
     for project in container:
         _ = DbtProjectWatcher(project, start=True)
+        app.state._p_references[project] = True
     try:
         yield
     finally:
         _save_state(container)
         _ = DbtProjectWatcher.stop_all()
+        app.state._p_references.clear()
 
 
 app = FastAPI(
@@ -350,6 +352,7 @@ def compile_sql(
 @app.get("/api/v1/register")
 def register_project(
     response: Response,
+    request: Request,
     project_dir: str = Query(...),
     profiles_dir: str | None = Query(None),
     target: str | None = Query(None),
@@ -370,6 +373,7 @@ def register_project(
         _save_state(runners)
         watcher = DbtProjectWatcher(dbt_project)
         watcher.start()
+        request.app.state._p_references[dbt_project] = True
     except Exception as e:
         response.status_code = 400
         return ServerErrorContainer(
@@ -387,6 +391,7 @@ def register_project(
 @app.delete("/api/v1/register")
 def unregister_project(
     response: Response,
+    request: Request,
     project_dir: str = Query(..., description="Project directory to unregister."),
     runners: DbtProjectContainer = Depends(_get_container),
 ) -> ServerUnregisterResult | ServerErrorContainer:
@@ -408,6 +413,7 @@ def unregister_project(
     _save_state(runners)
     if dbt_project:
         DbtProjectWatcher.stop_path(dbt_project.project_root)
+        _ = request.app.state._p_references.pop(dbt_project, None)
     return ServerUnregisterResult(
         removed=project_path.name, projects=list(map(str, runners.registered_projects()))
     )
@@ -650,10 +656,12 @@ def list_projects(runners: DbtProjectContainer = Depends(_get_container)) -> dic
 def inject_state(
     runner: DbtProject = Depends(_get_runner),
     directory: str = Query(..., description="Directory containing the deferral state files."),
-) -> ServerErrorContainer | None:
+) -> dict[str, t.Any] | ServerErrorContainer:
     """Enable dbt deferral by injecting the deferral state into the runner."""
     try:
         runner.inject_deferred_state(directory)
+        runner.parse_project(write_manifest=True)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -668,10 +676,12 @@ def inject_state(
 
 
 @app.delete("/api/v1/state")
-def clear_state(runner: DbtProject = Depends(_get_runner)) -> None:
+def clear_state(runner: DbtProject = Depends(_get_runner)) -> dict[str, t.Any]:
     """Clear the deferral state in the runner."""
     try:
         runner.clear_deferred_state()
+        runner.parse_project(write_manifest=True)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(
             status_code=500,
