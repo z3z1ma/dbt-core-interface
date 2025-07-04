@@ -4,6 +4,11 @@ jaffle_shop:
     dev:
       type: duckdb
       path: "sandbox/jaffle_shop.duckdb"
+      schema: dev_schema
+    prod:
+      type: duckdb
+      path: "sandbox/jaffle_shop.duckdb"
+      schema: prod_schema
     test:
       type: duckdb
       path: "jaffle_shop.duckdb"

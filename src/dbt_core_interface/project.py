@@ -142,6 +142,8 @@ class DbtConfiguration:
     use_experimental_parser: bool = True
     static_parser: bool = True
     partial_parse: bool = True
+    defer: bool = True
+    favor_state: bool = False
 
     dependencies: list[str] = field(default_factory=list)
     which: str = "zezima was here"
