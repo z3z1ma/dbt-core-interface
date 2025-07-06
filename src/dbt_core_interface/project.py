@@ -694,7 +694,7 @@ class DbtProject:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w") as f:
-            json.dump(self.manifest.to_dict(), f, indent=2)
+            json.dump(self.manifest.writable_manifest().to_dict(), f, separators=(",", ":"))
 
         logger.info(f"Wrote manifest to {path}")
 
