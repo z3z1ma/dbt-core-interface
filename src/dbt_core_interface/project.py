@@ -226,10 +226,14 @@ class DbtProject:
                 project = super().__new__(cls)
                 cls._instances[p] = project
             else:
-                if (target and target != project.runtime_config.target_name) or (
-                    vars and vars != project.args.vars
+                if (
+                    (profile and profile != project.runtime_config.profile_name)
+                    or (target and target != project.runtime_config.target_name)
+                    or (vars and vars != project.args.vars)
                 ):
-                    project.set_args(target=target, vars=vars or {}, threads=threads)
+                    project.set_args(
+                        profile=profile, target=target, vars=vars or {}, threads=threads
+                    )
             return project
 
     def __init__(
@@ -682,6 +686,10 @@ class DbtProject:
             path = self.project_root / "target" / "manifest.json"
         else:
             path = Path(path)
+            if not path.is_absolute():
+                path = self.project_root / path
+            if not path.name == "manifest.json":
+                path = path / "manifest.json"
 
         path.parent.mkdir(parents=True, exist_ok=True)
 

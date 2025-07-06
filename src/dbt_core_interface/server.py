@@ -355,20 +355,36 @@ def register_project(
     request: Request,
     project_dir: str = Query(...),
     profiles_dir: str | None = Query(None),
+    profile: str | None = Query(None),
     target: str | None = Query(None),
+    vars: dict[str, t.Any] | None = Body(None),
     runners: DbtProjectContainer = Depends(_get_container),
 ) -> ServerRegisterResult | ServerErrorContainer:
     """Register a new dbt project with the server."""
     project_path = Path(project_dir).expanduser().resolve()
-    if project_path in runners.registered_projects():
+    maybe_dbt_project = runners.get_project(project_path)
+    if maybe_dbt_project:
+        args = {}
+        if profile:
+            args["profile"] = profile
+        if target:
+            args["target"] = target
+        if profiles_dir:
+            args["profiles_dir"] = profiles_dir
+        if vars:
+            args["vars"] = vars
+        if args:
+            maybe_dbt_project.args = args
         return ServerRegisterResult(
             added=project_path.name, projects=list(map(str, runners.registered_projects()))
         )
     try:
         dbt_project = runners.create_project(
+            profile=profile,
             target=target,
             profiles_dir=profiles_dir,
             project_dir=project_dir,
+            vars=vars or {},
         )
         _save_state(runners)
         watcher = DbtProjectWatcher(dbt_project)

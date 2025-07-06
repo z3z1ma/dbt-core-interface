@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import typing as t
@@ -80,6 +81,7 @@ class DbtProjectContainer:
         project_dir: str | None = None,
         threads: int = 1,
         vars: dict[str, t.Any] | None = None,
+        profile: str | None = None,
     ) -> DbtProject:
         """Instantiate and register a new DbtProject."""
         from dbt_core_interface.project import DbtProject
@@ -90,9 +92,11 @@ class DbtProjectContainer:
             project_dir=project_dir,
             threads=threads,
             vars=vars or {},
+            profile=profile,
             autoregister=False,
         )
-        self.add_project(project)
+        with contextlib.suppress(ValueError):
+            self.add_project(project)
         return project
 
     def create_project_from_config(self, config: DbtConfiguration) -> DbtProject:
