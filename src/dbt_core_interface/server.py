@@ -468,6 +468,7 @@ def parse_project(
     return ServerResetResult(result="Project re-parsed successfully.")
 
 
+@app.get("/health")  # legacy extension support
 @app.get("/api/v1/status")
 def status(runner: DbtProject = Depends(_get_runner)) -> dict[str, t.Any]:
     """Health check endpoint to verify server status."""
@@ -507,6 +508,7 @@ class ServerFormatResult(BaseModel):
 @app.get("/api/v1/lint")
 @app.post("/api/v1/lint")
 def lint_sql(
+    request: Request,
     response: Response,
     sql_path: str | None = Query(None, description="Path to the SQL file to lint."),
     extra_config_path: str | None = Query(None, description="Path to extra SQLFluff config file."),
@@ -546,6 +548,8 @@ def lint_sql(
                 data={},
             )
         )
+    if request.url.path.endswith("/lint"):
+        return ServerLintResult(result=records[0]["violations"] if len(records) > 0 else [])
     return ServerLintResult(result=records)  # pyright: ignore[reportArgumentType]
 
 
