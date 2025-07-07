@@ -192,8 +192,9 @@ def _ensure_connection(f: t.Callable[P, T]) -> t.Callable[P, T]:
     @functools.wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         self = t.cast(DbtProject, args[0])
-        _ = self.adapter.connections.set_connection_name()
-        return f(*args, **kwargs)
+        is_duckdb = self.adapter.connections.TYPE == "duckdb"
+        with self.adapter.connection_named(f.__name__, should_release_connection=is_duckdb):
+            return f(*args, **kwargs)
 
     return wrapper
 
@@ -872,6 +873,7 @@ class DbtProject:
             all_records: list[LintingRecord] = []
             for records in self.pool.map(_lint, self.manifest.nodes.values()):
                 all_records.extend(records)
+            self.adapter.cleanup_connections()
 
             return all_records
         elif isinstance(sql, str):
@@ -935,7 +937,9 @@ class DbtProject:
                     success = False
                 return success
 
-            return all(res for res in self.pool.map(_format, self.manifest.nodes.values())), None
+            result = all(res for res in self.pool.map(_format, self.manifest.nodes.values())), None
+            self.adapter.cleanup_connections()
+            return result
         if isinstance(sql, str):
             logger.info(f"Formatting SQL string: {sql[:100]}")
             result = lint.lint_string_wrapped(sql, fname="stdin", fix=True)
