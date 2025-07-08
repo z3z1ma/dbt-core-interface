@@ -1652,3 +1652,9 @@ class DbtProject:
                 graph = graph.filter_by_depth(model_id, depth=depth, direction="both")
 
         return graph
+    def __reduce__(  # pyright: ignore[reportImplicitOverride]
+        self,
+    ) -> tuple[t.Callable[[DbtConfiguration], DbtProject], tuple[DbtConfiguration]]:
+        """Use for pickling the DbtProject instance."""
+        config = self.to_config()
+        return (self.__class__.from_config, (config,))
