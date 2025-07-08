@@ -7,6 +7,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import functools
+import gc
 import json
 import logging
 import os
@@ -343,7 +344,7 @@ class DbtProject:
         if isinstance(value, dict):
             value = dc_replace(self._args, **value)
         set_from_args(value, None)  # pyright: ignore[reportArgumentType]
-        self.parse_project(reparse_configuration=True)
+        self.parse_project(write_manifest=True, reparse_configuration=True)
         self._args = value
 
     def set_args(self, **kwargs: t.Any) -> None:
@@ -500,9 +501,9 @@ class DbtProject:
                 self.__manifest_loader.build_manifest_state_check()
             )
             self._manifest = self.__manifest_loader.saved_manifest = self.__manifest_loader.load()
-            self._manifest.build_flat_graph()
-            self._manifest.build_parent_and_child_maps()
-            self._manifest.build_group_map()
+            if not self.__manifest_loader.skip_parsing:
+                self._manifest.build_flat_graph()
+                self._manifest.build_group_map()
 
             self._sql_parser = None
             self._macro_parser = None
@@ -510,7 +511,8 @@ class DbtProject:
             self.__manifest_loader.save_macros_to_adapter(self.adapter)
             self.__compilation_cache.clear()
 
-            if write_manifest:
+            _ = gc.collect()
+            if write_manifest and not self.__manifest_loader.skip_parsing:
                 self.write_manifest()
 
         logger.info(f"Parsed project: {self.project_name}")
@@ -684,7 +686,7 @@ class DbtProject:
     def write_manifest(self, path: Path | str | None = None) -> None:
         """Write manifest to disk."""
         if path is None:
-            path = self.project_root / "target" / "manifest.json"
+            path = self.target_path / "manifest.json"
         else:
             path = Path(path)
             if not path.is_absolute():
@@ -1006,6 +1008,8 @@ class DbtProject:
             logger.warning(f"No manifest found in previous state at {state_path}")
             return
         self.manifest.merge_from_artifact(previous_state.manifest)
+        del previous_state
+        _ = gc.collect()
 
     def clear_deferred_state(self) -> None:
         """Clear the deferred state from the manifest."""

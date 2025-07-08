@@ -116,7 +116,7 @@ class DbtProjectWatcher:
                 change_level = self._check_for_changes()
                 if change_level:
                     self._project.parse_project(
-                        write_manifest=False, reparse_configuration=change_level > 1
+                        write_manifest=True, reparse_configuration=change_level > 1
                     )
             except Exception as e:
                 logger.error(f"Error in project watcher loop: {e}")
