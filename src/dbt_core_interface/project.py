@@ -19,7 +19,7 @@ import typing as t
 import uuid
 import weakref
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
@@ -1030,3 +1030,10 @@ class DbtProject:
         for node in self.manifest.nodes.values():
             if hasattr(node, "defer_relation"):
                 node.defer_relation = None  # pyright: ignore[reportAttributeAccessIssue]
+
+    def __reduce__(  # pyright: ignore[reportImplicitOverride]
+        self,
+    ) -> tuple[t.Callable[[DbtConfiguration], DbtProject], tuple[DbtConfiguration]]:
+        """Use for pickling the DbtProject instance."""
+        config = self.to_config()
+        return (self.__class__.from_config, (config,))
