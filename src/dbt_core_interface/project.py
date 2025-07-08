@@ -19,7 +19,7 @@ import typing as t
 import uuid
 import weakref
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
@@ -331,6 +331,17 @@ class DbtProject:
             threads=config.threads,
             vars=config.vars,
             profile=config.profile,
+        )
+
+    def to_config(self) -> DbtConfiguration:
+        """Convert the project to a DbtConfiguration instance."""
+        return DbtConfiguration(
+            target=self.runtime_config.target_name,
+            profiles_dir=str(self.profiles_yml.parent),
+            project_dir=str(self.project_root),
+            threads=self.runtime_config.threads or 1,
+            vars=self.runtime_config.vars.to_dict() or {},
+            profile=self.runtime_config.profile_name,
         )
 
     @property
@@ -999,8 +1010,11 @@ class DbtProject:
 
     def inject_deferred_state(self, state_path: Path | str) -> None:
         """Merge the manifest from a previous state artifact for dbt deferral behavior."""
+        state_path = Path(state_path)
+        if not state_path.is_absolute():
+            state_path = self.project_root / state_path
         previous_state = PreviousState(
-            state_path=Path(state_path).resolve(),
+            state_path=state_path.resolve(),
             target_path=self.target_path,
             project_root=self.project_root,
         )
