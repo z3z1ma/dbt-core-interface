@@ -269,6 +269,31 @@ def _format_run_result(res: ExecutionResult) -> ServerRunResult:
     )
 
 
+def _create_error_response(
+    code: ServerErrorCode,
+    message: str,
+    data: dict[str, t.Any] | None = None,
+) -> ServerErrorContainer:
+    """Create a standardized error response.
+
+    Args:
+        code: The server error code.
+        message: The error message.
+        data: Optional additional error data.
+
+    Returns:
+        A ServerErrorContainer with the provided error details.
+
+    """
+    return ServerErrorContainer(
+        error=ServerError(
+            code=code,
+            message=message,
+            data=data or getattr(Exception(message), "__dict__", {}),
+        )
+    )
+
+
 @app.post("/api/v1/run")
 def run_sql(
     response: Response,
@@ -283,12 +308,9 @@ def run_sql(
         node = runner.get_node_by_path(model_path)
         if not node:
             response.status_code = 404
-            return ServerErrorContainer(
-                error=ServerError(
-                    code=ServerErrorCode.MissingRequiredParams,
-                    message=f"Model path not found in dbt manifest: {model_path}",
-                    data={},
-                )
+            return _create_error_response(
+                ServerErrorCode.MissingRequiredParams,
+                f"Model path not found in dbt manifest: {model_path}",
             )
         orig_raw_sql = node.raw_code
         try:
@@ -313,12 +335,10 @@ def run_sql(
         exec_res = runner.execute_sql(t.cast(str, query), compile=False)  # pyright: ignore[reportInvalidCast]
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ExecuteSqlFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.ExecuteSqlFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     return _format_run_result(exec_res)
 
@@ -336,12 +356,9 @@ def compile_sql(
             node = runner.get_node_by_path(model_path)
             if not node:
                 response.status_code = 404
-                return ServerErrorContainer(
-                    error=ServerError(
-                        code=ServerErrorCode.MissingRequiredParams,
-                        message=f"Model path not found: {model_path}",
-                        data={},
-                    )
+                return _create_error_response(
+                    ServerErrorCode.MissingRequiredParams,
+                    f"Model path not found: {model_path}",
                 )
             orig_raw_sql = node.raw_code
             try:
@@ -355,12 +372,10 @@ def compile_sql(
             result_sql = comp_res.compiled_code
     except Exception as e:
         response.status_code = 400
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.CompileSqlFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.CompileSqlFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     return ServerCompileResult(result=result_sql)
 
@@ -408,12 +423,10 @@ def register_project(
         request.app.state._p_references[dbt_project] = True
     except Exception as e:
         response.status_code = 400
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ProjectParseFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.ProjectParseFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     return ServerRegisterResult(
         added=project_path.name, projects=list(map(str, runners.registered_projects()))
@@ -434,12 +447,10 @@ def unregister_project(
         not in runners.registered_projects()
     ):
         response.status_code = 404
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ProjectNotRegistered,
-                message="Project not registered; register first.",
-                data={"registered_projects": list(map(str, runners.registered_projects()))},
-            )
+        return _create_error_response(
+            ServerErrorCode.ProjectNotRegistered,
+            "Project not registered; register first.",
+            {"registered_projects": list(map(str, runners.registered_projects()))},
         )
     dbt_project = runners.drop_project(project_path)
     _save_state(runners)
@@ -474,12 +485,10 @@ def parse_project(
             background_tasks.add_task(runner.parse_project, write_manifest=write_manifest)
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ProjectParseFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.ProjectParseFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     return ServerResetResult(result="Project re-parsed successfully.")
 
@@ -544,12 +553,9 @@ def lint_sql(
         else:
             if not raw_sql:
                 response.status_code = 400
-                return ServerErrorContainer(
-                    error=ServerError(
-                        code=ServerErrorCode.MissingRequiredParams,
-                        message="No SQL provided. Provide sql_path or SQL body.",
-                        data={},
-                    )
+                return _create_error_response(
+                    ServerErrorCode.MissingRequiredParams,
+                    "No SQL provided. Provide sql_path or SQL body.",
                 )
             records = runner.lint(
                 sql=raw_sql,
@@ -557,13 +563,7 @@ def lint_sql(
             )
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.CompileSqlFailure,
-                message=str(e),
-                data={},
-            )
-        )
+        return _create_error_response(ServerErrorCode.CompileSqlFailure, str(e), {})
     if request.url.path.endswith("/lint"):
         return ServerLintResult(result=records[0]["violations"] if len(records) > 0 else [])
     return ServerLintResult(result=records)  # pyright: ignore[reportArgumentType]
@@ -591,12 +591,9 @@ def format_sql(
         else:
             if not raw_sql:
                 response.status_code = 400
-                return ServerErrorContainer(
-                    error=ServerError(
-                        code=ServerErrorCode.MissingRequiredParams,
-                        message="No SQL provided. Provide sql_path or SQL body.",
-                        data={},
-                    )
+                return _create_error_response(
+                    ServerErrorCode.MissingRequiredParams,
+                    "No SQL provided. Provide sql_path or SQL body.",
                 )
             success, formatted = runner.format(
                 sql=raw_sql,
@@ -604,13 +601,7 @@ def format_sql(
             )
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.CompileSqlFailure,
-                message=str(e),
-                data={},
-            )
-        )
+        return _create_error_response(ServerErrorCode.CompileSqlFailure, str(e), {})
     return ServerFormatResult(result=success, sql=formatted)
 
 
@@ -631,12 +622,10 @@ def run_dbt_command(
         result = runner.command(cmd, *(args or []), **(kwargs or {}))
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ExecuteSqlFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.ExecuteSqlFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     if isinstance(result.result, Manifest):
         result.result = result.result.writable_manifest()
@@ -660,12 +649,10 @@ def write_manifest(
         runner.write_manifest(target_path)
     except Exception as e:
         response.status_code = 500
-        return ServerErrorContainer(
-            error=ServerError(
-                code=ServerErrorCode.ProjectParseFailure,
-                message=str(e),
-                data=getattr(e, "__dict__", {}),
-            )
+        return _create_error_response(
+            ServerErrorCode.ProjectParseFailure,
+            str(e),
+            getattr(e, "__dict__", {}),
         )
     return ServerResetResult(result="Manifest written.")
 

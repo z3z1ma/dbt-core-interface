@@ -39,7 +39,14 @@ class DbtProjectWatcher:
     def __init__(
         self, project: DbtProject, check_interval: float = 2.0, start: bool = False
     ) -> None:
-        """Initialize the project watcher."""
+        """Initialize the project watcher.
+
+        Args:
+            project: The DbtProject instance to watch for file changes.
+            check_interval: Time in seconds between file change checks.
+            start: If True, start watching immediately after initialization.
+
+        """
         if hasattr(self, "_project"):
             return
 
@@ -71,19 +78,36 @@ class DbtProjectWatcher:
 
     @property
     def _project(self) -> DbtProject | None:
-        """Unmarshal the project reference."""
+        """Unmarshal the project reference.
+
+        Returns:
+            The DbtProject instance if it still exists, None otherwise.
+
+        """
         return self._project_ref()
 
     @property
     def _project_or_raise(self) -> DbtProject:
-        """Unmarshal the project reference or raise an error if invalid."""
+        """Unmarshal the project reference or raise an error if invalid.
+
+        Returns:
+            The DbtProject instance.
+
+        Raises:
+            RuntimeError: If the project reference has been invalidated.
+
+        """
         project = self._project_ref()
         if not project:
             raise RuntimeError("Project reference is no longer valid.")
         return project
 
     def start(self) -> None:
-        """Start monitoring files for changes."""
+        """Start monitoring files for changes.
+
+        Creates and starts a daemon thread that runs the monitoring loop.
+        Does nothing if the watcher is already running or the project is invalid.
+        """
         if self._running or not self._project:
             return
         self._running = True
@@ -93,7 +117,11 @@ class DbtProjectWatcher:
         logger.info("Project watcher started for %s", self._project_or_raise.project_root)
 
     def stop(self) -> None:
-        """Stop monitoring files."""
+        """Stop monitoring files.
+
+        Signals the monitoring thread to stop and waits for it to complete.
+        Does nothing if the watcher is not already running.
+        """
         if not self._running:
             return
 
@@ -105,7 +133,11 @@ class DbtProjectWatcher:
         logger.info("Project watcher stopped for %s", self._project_or_raise.project_root)
 
     def _monitor_loop(self) -> None:
-        """Run the main monitoring loop."""
+        """Run the main monitoring loop.
+
+        Continuously checks for file changes and triggers project re-parsing when
+        changes are detected. The loop runs until the watcher is stopped.
+        """
         self._initialize_file_mtimes()
         self._project_or_raise.set_invocation_context()
 
@@ -124,7 +156,11 @@ class DbtProjectWatcher:
             _ = self._stop_event.wait(self.check_interval)
 
     def _initialize_file_mtimes(self) -> None:
-        """Initialize the file modification time tracking."""
+        """Initialize the file modification time tracking for all project files.
+
+        Captures the initial mtime for files in the manifest and configuration files
+        (dbt_project.yml and profiles.yml) to establish a baseline for change detection.
+        """
         for f_proxy in self._project_or_raise.manifest.files.values():
             path = Path(f_proxy.path.absolute_path)
             if path.exists():
@@ -140,8 +176,12 @@ class DbtProjectWatcher:
     def _check_for_changes(self) -> int:
         """Check for changes in tracked files.
 
-        A return value of 0 means no changes, 1 means files were added/removed, and 2 means
-        a configuration file was modified (dbt_project.yml or profiles.yml).
+        Returns:
+            An integer indicating the level of changes detected:
+            - 0: No changes detected
+            - 1: Files were added, removed, or modified (non-config files)
+            - 2: Configuration file was modified (dbt_project.yml or profiles.yml)
+
         """
         for path in (self._project_or_raise.dbt_project_yml, self._project_or_raise.profiles_yml):
             try:
@@ -183,7 +223,12 @@ class DbtProjectWatcher:
 
     @classmethod
     def stop_all(cls) -> int:
-        """Stop all active watchers and clear the instances."""
+        """Stop all active watchers and clear the instances.
+
+        Returns:
+            The number of watchers that were stopped.
+
+        """
         stopped = 0
         with cls._instance_lock:
             for watcher in list(cls._instances.values()):
@@ -196,7 +241,12 @@ class DbtProjectWatcher:
 
     @classmethod
     def stop_project(cls, project: DbtProject) -> None:
-        """Stop the watcher for a specific project."""
+        """Stop the watcher for a specific project.
+
+        Args:
+            project: The DbtProject instance whose watcher should be stopped.
+
+        """
         with cls._instance_lock:
             watcher = cls._instances.pop(project, None)
             if watcher:
@@ -209,7 +259,13 @@ class DbtProjectWatcher:
 
     @classmethod
     def stop_path(cls, path: Path | str) -> None:
-        """Stop the watcher for a specific project path."""
+        """Stop the watcher for a specific project path.
+
+        Args:
+            path: The path to the project. Can be an absolute path or a path
+                  within a project's directory tree.
+
+        """
         with cls._instance_lock:
             path = Path(path).expanduser().resolve()
             for project in (
@@ -224,6 +280,11 @@ class DbtProjectWatcher:
 
     @classmethod
     def active_watchers(cls) -> list[DbtProjectWatcher]:
-        """Return a list of currently active project paths being watched."""
+        """Return a list of currently active watchers.
+
+        Returns:
+            A list of DbtProjectWatcher instances that are currently active.
+
+        """
         with cls._instance_lock:
             return list(cls._instances.values())

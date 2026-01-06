@@ -19,7 +19,7 @@ import typing as t
 import uuid
 import weakref
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import datetime
 from multiprocessing import get_context as get_mp_context
@@ -809,7 +809,22 @@ class DbtProject:
         ignore_local_config: bool = False,
         **kwargs: t.Any,
     ) -> FluffConfig:
-        """Load the SQLFluff configuration for a given path, otherwise for the project itself."""
+        """Load the SQLFluff configuration for a given path, otherwise for the project itself.
+
+        This method loads SQLFluff configuration with caching support. It tracks config
+        file modification times to invalidate caches when files change, ensuring
+        configuration stays up-to-date without excessive re-parsing.
+
+        Args:
+            path: The path to load configuration for. Defaults to project root.
+            extra_config_path: Optional path to additional SQLFluff config file.
+            ignore_local_config: Whether to ignore local .sqlfluff config files.
+            **kwargs: Additional configuration overrides.
+
+        Returns:
+            A FluffConfig instance with the merged configuration.
+
+        """
         import sqlfluff.core.config as sqlfluff_config
 
         overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
@@ -877,7 +892,21 @@ class DbtProject:
         ignore_local_config: bool = False,
         fluff_conf: FluffConfig | None = None,
     ) -> list[LintingRecord]:
-        """Lint specified file or SQL string."""
+        """Lint specified file or SQL string.
+
+        Args:
+            sql: The SQL to lint. Can be:
+                - None: Lint all model files in the project
+                - str: Lint a SQL string
+                - Path: Lint a SQL file
+            extra_config_path: Optional path to extra SQLFluff config file.
+            ignore_local_config: Whether to ignore local SQLFluff config.
+            fluff_conf: Optional pre-configured FluffConfig instance.
+
+        Returns:
+            A list of LintingRecord objects containing linting violations.
+
+        """
         from sqlfluff.cli.commands import get_linter_and_formatter
 
         fluff_conf = fluff_conf or self.get_sqlfluff_configuration(
@@ -927,7 +956,23 @@ class DbtProject:
         ignore_local_config: bool = False,
         fluff_conf: FluffConfig | None = None,
     ) -> tuple[bool, str | None]:
-        """Format specified file or SQL string."""
+        """Format specified file or SQL string.
+
+        Args:
+            sql: The SQL to format. Can be:
+                - None: Format all model files in the project
+                - str: Format a SQL string
+                - Path: Format a SQL file
+            extra_config_path: Optional path to extra SQLFluff config file.
+            ignore_local_config: Whether to ignore local SQLFluff config.
+            fluff_conf: Optional pre-configured FluffConfig instance.
+
+        Returns:
+            A tuple of (success, formatted_sql):
+                - success: True if formatting succeeded without errors
+                - formatted_sql: The formatted SQL string (only for str input, None otherwise)
+
+        """
         from sqlfluff.cli.commands import get_linter_and_formatter
         from sqlfluff.core import SQLLintError
 
