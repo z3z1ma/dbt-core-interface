@@ -1304,3 +1304,148 @@ class DbtProject:
         generator = SourceGenerator(self)
         sources = generator.generate_sources(options)
         return to_yaml(sources, quote_identifiers=False)
+
+    def generate_staging_models(
+        self,
+        source_name: str | None = None,
+        table_name: str | None = None,
+        naming_convention: str = "snake_case",
+        materialization: str = "view",
+        remove_prefixes: list[str] | None = None,
+        remove_suffixes: list[str] | None = None,
+    ) -> list[dict[str, t.Any]]:
+        """Generate staging models from source definitions.
+
+        Args:
+            source_name: Filter by specific source name (None for all sources)
+            table_name: Filter by specific table name (requires source_name)
+            naming_convention: Naming convention for columns (snake_case, camel_case, etc.)
+            materialization: Materialization type (view, table, incremental)
+            remove_prefixes: List of prefixes to strip from column names
+            remove_suffixes: List of suffixes to strip from column names
+
+        Returns:
+            List of dictionaries containing generated model information:
+                - model_name: Suggested model name
+                - source_name: Source name
+                - table_name: Table name
+                - model_sql: Generated SQL model
+                - schema_yml: Generated YAML schema
+                - column_mappings: List of column mappings
+        """
+        from dbt_core_interface.staging_generator import (
+            NamingConvention,
+            StagingGenerator,
+            StagingModelConfig,
+        )
+
+        # Map string to enum
+        convention_map = {
+            "snake_case": NamingConvention.SNAKE_CASE,
+            "camel_case": NamingConvention.CAMEL_CASE,
+            "kebab_case": NamingConvention.KEBAB_CASE,
+            "pascal_case": NamingConvention.PASCAL_CASE,
+        }
+        convention = convention_map.get(naming_convention, NamingConvention.SNAKE_CASE)
+
+        # Create config
+        config = StagingModelConfig(
+            materialization=materialization,
+            naming_convention=convention,
+            remove_prefixes=remove_prefixes or [],
+            remove_suffixes=remove_suffixes or [],
+        )
+
+        # Filter sources
+        sources_to_process: list[SourceDefinition] = []
+        for node in self.manifest.sources.values():
+            if source_name and node.source_name != source_name:
+                continue
+            if table_name and node.name != table_name:
+                continue
+            sources_to_process.append(node)
+
+        # Generate staging models
+        generator = StagingGenerator(config)
+        results: list[dict[str, t.Any]] = []
+
+        for source in sources_to_process:
+            result = generator.generate_from_source(source, self.manifest)
+            results.append(result)
+
+        logger.info(f"Generated {len(results)} staging model(s)")
+        return results
+
+    def generate_staging_model(
+        self,
+        source_name: str,
+        table_name: str,
+        naming_convention: str = "snake_case",
+        materialization: str = "view",
+        remove_prefixes: list[str] | None = None,
+        remove_suffixes: list[str] | None = None,
+    ) -> dict[str, t.Any] | None:
+        """Generate a staging model for a specific source table.
+
+        Args:
+            source_name: The source name
+            table_name: The table name within the source
+            naming_convention: Naming convention for columns
+            materialization: Materialization type
+            remove_prefixes: List of prefixes to strip from column names
+            remove_suffixes: List of suffixes to strip from column names
+
+        Returns:
+            Dictionary with generated model information, or None if source not found
+        """
+        results = self.generate_staging_models(
+            source_name=source_name,
+            table_name=table_name,
+            naming_convention=naming_convention,
+            materialization=materialization,
+            remove_prefixes=remove_prefixes,
+            remove_suffixes=remove_suffixes,
+        )
+        return results[0] if results else None
+
+    def list_sources(
+        self,
+        source_name: str | None = None,
+    ) -> list[dict[str, t.Any]]:
+        """List available source definitions.
+
+        Args:
+            source_name: Filter by specific source name (None for all sources)
+
+        Returns:
+            List of source information dictionaries
+        """
+        sources: list[dict[str, t.Any]] = []
+        for node in self.manifest.sources.values():
+            if source_name and node.source_name != source_name:
+                continue
+
+            # Extract column info
+            columns: list[dict[str, t.Any]] = []
+            if hasattr(node, "columns"):
+                for col_name, col_info in node.columns.items():
+                    columns.append(
+                        {
+                            "name": col_name,
+                            "data_type": col_info.get("data_type") if isinstance(col_info, dict) else None,
+                            "description": col_info.get("description", "") if isinstance(col_info, dict) else "",
+                        }
+                    )
+
+            sources.append(
+                {
+                    "source_name": node.source_name,
+                    "table_name": node.name,
+                    "description": node.description or "",
+                    "database": node.database,
+                    "schema": node.schema,
+                    "columns": columns,
+                }
+            )
+
+        return sources

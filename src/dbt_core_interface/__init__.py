@@ -11,6 +11,13 @@ from dbt_core_interface.source_generator import (  # noqa: F401
     TableInfo,
     to_yaml,
 )
+from dbt_core_interface.staging_generator import (  # noqa: F401
+    ColumnMapping,
+    NamingConvention,
+    StagingGenerator,
+    StagingModelConfig,
+    generate_staging_model_from_source,
+)
 from dbt_core_interface.test_suggester import (  # noqa: F401
     ColumnPattern,
     DEFAULT_PATTERNS,
