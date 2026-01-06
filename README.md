@@ -52,6 +52,7 @@ It supports dynamic multi-project environments, automatic re-parsing, file watch
 * 🚀 Dynamic macro parsing, Jinja rendering, manifest manipulation
 * 🔄 Background file watching for auto-reparsing
 * ⚖ Direct dbt command passthrough (e.g. `run`, `test`, `docs serve`, etc.)
+* 🔍 **Automated data quality monitoring and alerting**
 
 ---
 
@@ -189,6 +190,94 @@ print(docs)
 
 # On object deletion, project is unregistered automatically
 del client
+```
+
+### Data Quality Monitoring
+
+`dbt-core-interface` includes automated data quality monitoring and alerting capabilities:
+
+```python
+from dbt_core_interface import DbtProject, RowCountCheck, NullPercentageCheck
+from dbt_core_interface import Severity, WebhookAlertChannel
+
+# Load your project
+project = DbtProject(project_dir="/path/to/dbt_project")
+
+# Access the quality monitor
+monitor = project.quality_monitor
+
+# Add quality checks to your models
+monitor.add_check(
+    "my_model",
+    RowCountCheck(
+        name="row_count_validation",
+        min_rows=1,
+        max_rows=1000000,
+        severity=Severity.ERROR,
+    )
+)
+
+monitor.add_check(
+    "my_model",
+    NullPercentageCheck(
+        name="null_id_check",
+        column_name="id",
+        max_null_percentage=0.0,
+        severity=Severity.CRITICAL,
+    )
+)
+
+# Add alert channels
+monitor.add_alert_channel(
+    WebhookAlertChannel(url="https://hooks.slack.com/services/YOUR/WEBHOOK/URL")
+)
+
+# Run all quality checks
+results = monitor.run_checks(model_name="my_model")
+for result in results:
+    print(f"{result.check_name}: {result.status} - {result.message}")
+
+# Run checks for all models
+all_results = monitor.run_checks()
+```
+
+#### Available Check Types
+
+- **RowCountCheck**: Validate row counts are within min/max bounds
+- **NullPercentageCheck**: Ensure null percentage in a column is acceptable
+- **DuplicateCheck**: Detect duplicate rows based on key columns
+- **ValueRangeCheck**: Verify numeric values are within expected range
+- **CustomSqlCheck**: Define custom SQL-based validation logic
+
+#### Server API Endpoints
+
+When running the FastAPI server, use these endpoints for quality monitoring:
+
+```bash
+# Add a quality check
+curl -X POST 'http://localhost:8581/api/v1/quality/checks' \
+  -H 'X-dbt-Project: /your/dbt_project' \
+  -d '{
+    "name": "row_count_check",
+    "check_type": "row_count",
+    "model_name": "my_model",
+    "severity": "warning",
+    "config": {"min_rows": 1, "max_rows": 1000000}
+  }'
+
+# List all quality checks
+curl 'http://localhost:8581/api/v1/quality/checks?project_dir=/your/dbt_project'
+
+# Run quality checks
+curl -X POST 'http://localhost:8581/api/v1/quality/run?project_dir=/your/dbt_project&model_name=my_model'
+
+# Add an alert channel
+curl -X POST 'http://localhost:8581/api/v1/quality/alerts' \
+  -H 'X-dbt-Project: /your/dbt_project' \
+  -d '{
+    "channel_type": "webhook",
+    "config": {"url": "https://hooks.slack.com/..."}
+  }'
 ```
 
 ---

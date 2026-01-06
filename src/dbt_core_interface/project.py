@@ -287,6 +287,8 @@ class DbtProject:
             self.runtime_config.load_dependencies(),
         )
 
+        self._quality_monitor: t.Any | None = None
+
         if load:
             self.parse_project(write_manifest=True)
 
@@ -310,6 +312,9 @@ class DbtProject:
 
                 if instance._pool:
                     instance._pool.shutdown(wait=True, cancel_futures=True)
+
+                if instance._quality_monitor:
+                    instance._quality_monitor.close()
 
                 del CONTAINER[instance.project_root]
 
@@ -1047,3 +1052,12 @@ class DbtProject:
         for node in self.manifest.nodes.values():
             if hasattr(node, "defer_relation"):
                 node.defer_relation = None  # pyright: ignore[reportAttributeAccessIssue]
+
+    @property
+    def quality_monitor(self) -> t.Any:
+        """Get the QualityMonitor instance for this project."""
+        if self._quality_monitor is None:
+            from dbt_core_interface.quality import QualityMonitor
+
+            self._quality_monitor = QualityMonitor(project=self)
+        return self._quality_monitor

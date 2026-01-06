@@ -38,6 +38,22 @@ from dbt_core_interface.project import (
     DbtProject,
     ExecutionResult,
 )
+from dbt_core_interface.quality import (
+    AlertChannel,
+    CheckStatus,
+    ConsoleAlertChannel,
+    CustomSqlCheck,
+    DuplicateCheck,
+    LogAlertChannel,
+    NullPercentageCheck,
+    QualityCheck,
+    QualityCheckType,
+    QualityMonitor,
+    RowCountCheck,
+    Severity,
+    ValueRangeCheck,
+    WebhookAlertChannel,
+)
 from dbt_core_interface.watcher import DbtProjectWatcher
 
 __all__ = ["app", "main"]
@@ -713,6 +729,239 @@ def clear_state(runner: DbtProject = Depends(_get_runner)) -> dict[str, t.Any]:
                 )
             ).model_dump(),
         ) from e
+
+
+class QualityCheckConfig(BaseModel):
+    """Configuration for creating a quality check."""
+
+    name: str
+    check_type: QualityCheckType
+    model_name: str
+    description: str = ""
+    severity: Severity = Severity.WARNING
+    enabled: bool = True
+    config: dict[str, t.Any] = {}
+
+
+class QualityCheckResultResponse(BaseModel):
+    """Response model for quality check results."""
+
+    results: list[dict[str, t.Any]]
+
+
+class AlertChannelConfig(BaseModel):
+    """Configuration for adding an alert channel."""
+
+    channel_type: str
+    config: dict[str, t.Any] = {}
+
+
+@app.post("/api/v1/quality/checks")
+def add_quality_check(
+    response: Response,
+    check_config: QualityCheckConfig,
+    runner: DbtProject = Depends(_get_runner),
+) -> dict[str, t.Any] | ServerErrorContainer:
+    """Add a quality check to a model."""
+    try:
+        monitor = runner.quality_monitor
+
+        check: QualityCheck
+        if check_config.check_type == QualityCheckType.ROW_COUNT:
+            check = RowCountCheck(
+                name=check_config.name,
+                description=check_config.description,
+                severity=check_config.severity,
+                enabled=check_config.enabled,
+                min_rows=check_config.config.get("min_rows"),
+                max_rows=check_config.config.get("max_rows"),
+            )
+        elif check_config.check_type == QualityCheckType.NULL_PERCENTAGE:
+            check = NullPercentageCheck(
+                name=check_config.name,
+                description=check_config.description,
+                severity=check_config.severity,
+                enabled=check_config.enabled,
+                column_name=check_config.config.get("column_name", ""),
+                max_null_percentage=check_config.config.get("max_null_percentage", 0.0),
+            )
+        elif check_config.check_type == QualityCheckType.DUPLICATE:
+            check = DuplicateCheck(
+                name=check_config.name,
+                description=check_config.description,
+                severity=check_config.severity,
+                enabled=check_config.enabled,
+                columns=check_config.config.get("columns", []),
+                max_duplicate_percentage=check_config.config.get("max_duplicate_percentage", 0.0),
+            )
+        elif check_config.check_type == QualityCheckType.VALUE_RANGE:
+            check = ValueRangeCheck(
+                name=check_config.name,
+                description=check_config.description,
+                severity=check_config.severity,
+                enabled=check_config.enabled,
+                column_name=check_config.config.get("column_name", ""),
+                min_value=check_config.config.get("min_value"),
+                max_value=check_config.config.get("max_value"),
+            )
+        elif check_config.check_type == QualityCheckType.CUSTOM_SQL:
+            check = CustomSqlCheck(
+                name=check_config.name,
+                description=check_config.description,
+                severity=check_config.severity,
+                enabled=check_config.enabled,
+                sql_template=check_config.config.get("sql_template", ""),
+                expect_true=check_config.config.get("expect_true", True),
+            )
+        else:
+            response.status_code = 400
+            return ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.MissingRequiredParams,
+                    message=f"Unknown check type: {check_config.check_type}",
+                    data={},
+                )
+            )
+
+        monitor.add_check(check_config.model_name, check)
+        return {"success": True, "check_name": check_config.name, "model": check_config.model_name}
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.delete("/api/v1/quality/checks")
+def remove_quality_check(
+    response: Response,
+    model_name: str = Query(..., description="Name of the model"),
+    check_name: str = Query(..., description="Name of the check to remove"),
+    runner: DbtProject = Depends(_get_runner),
+) -> dict[str, t.Any] | ServerErrorContainer:
+    """Remove a quality check from a model."""
+    try:
+        monitor = runner.quality_monitor
+        removed = monitor.remove_check(model_name, check_name)
+        if not removed:
+            response.status_code = 404
+            return ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.ProjectNotRegistered,
+                    message=f"Check '{check_name}' not found for model '{model_name}'",
+                    data={},
+                )
+            )
+        return {"success": True, "check_name": check_name, "model": model_name}
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.get("/api/v1/quality/checks")
+def list_quality_checks(
+    model_name: str | None = Query(None, description="Filter checks by model name"),
+    runner: DbtProject = Depends(_get_runner),
+) -> dict[str, t.Any]:
+    """List all quality checks, optionally filtered by model."""
+    monitor = runner.quality_monitor
+    checks = monitor.get_checks(model_name)
+    return {"checks": checks}
+
+
+@app.post("/api/v1/quality/run")
+def run_quality_checks(
+    response: Response,
+    model_name: str | None = Query(None, description="Run checks for a specific model"),
+    check_name: str | None = Query(None, description="Run a specific check by name"),
+    only_enabled: bool = Query(True, description="Only run enabled checks"),
+    runner: DbtProject = Depends(_get_runner),
+) -> QualityCheckResultResponse | ServerErrorContainer:
+    """Run quality checks for a model or all models."""
+    try:
+        monitor = runner.quality_monitor
+
+        if check_name and not model_name:
+            response.status_code = 400
+            return ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.MissingRequiredParams,
+                    message="model_name is required when check_name is specified",
+                    data={},
+                )
+            )
+
+        if check_name:
+            result = monitor.run_check_by_name(model_name or "", check_name)
+            results = [result.to_dict()] if result else []
+        else:
+            results = [r.to_dict() for r in monitor.run_checks(model_name, only_enabled)]
+
+        return QualityCheckResultResponse(results=results)
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.post("/api/v1/quality/alerts")
+def add_alert_channel(
+    response: Response,
+    channel_config: AlertChannelConfig,
+    runner: DbtProject = Depends(_get_runner),
+) -> dict[str, t.Any] | ServerErrorContainer:
+    """Add an alert channel for quality failures."""
+    try:
+        monitor = runner.quality_monitor
+
+        channel: AlertChannel
+        if channel_config.channel_type == "webhook":
+            channel = WebhookAlertChannel(
+                url=channel_config.config.get("url", ""),
+                timeout=channel_config.config.get("timeout", 5.0),
+                headers=channel_config.config.get("headers"),
+                verify_ssl=channel_config.config.get("verify_ssl", True),
+            )
+        elif channel_config.channel_type == "log":
+            channel = LogAlertChannel()
+        elif channel_config.channel_type == "console":
+            channel = ConsoleAlertChannel()
+        else:
+            response.status_code = 400
+            return ServerErrorContainer(
+                error=ServerError(
+                    code=ServerErrorCode.MissingRequiredParams,
+                    message=f"Unknown channel type: {channel_config.channel_type}",
+                    data={},
+                )
+            )
+
+        monitor.add_alert_channel(channel)
+        return {"success": True, "channel_type": channel_config.channel_type}
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
 
 
 def main() -> None:
