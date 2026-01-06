@@ -1095,6 +1095,85 @@ def generate_sources(
         )
 
 
+class ServerStagingResult(BaseModel):
+    """Container for staging model generation results."""
+
+    model_name: str
+    source_name: str
+    table_name: str
+    model_sql: str
+    schema_yml: str
+    column_mappings: list[dict[str, t.Any]]
+
+
+class ServerStagingResultList(BaseModel):
+    """Container for multiple staging model results."""
+
+    results: list[ServerStagingResult]
+
+
+class ServerSourcesListResult(BaseModel):
+    """Container for sources list results."""
+
+    sources: list[dict[str, t.Any]]
+
+
+@app.get("/api/v1/sources")
+def list_sources(
+    source_name: str | None = Query(None, description="Filter by specific source name"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerSourcesListResult:
+    """List all available source definitions."""
+    sources = runner.list_sources(source_name=source_name)
+    return ServerSourcesListResult(sources=sources)
+
+
+@app.get("/api/v1/generate-staging")
+@app.post("/api/v1/generate-staging")
+def generate_staging_models(
+    response: Response,
+    source_name: str | None = Query(None, description="Filter by specific source name"),
+    table_name: str | None = Query(None, description="Filter by specific table name"),
+    naming_convention: str = Query("snake_case", description="Naming convention for columns"),
+    materialization: str = Query("view", description="Materialization type"),
+    remove_prefixes: list[str] | None = Body(None, description="Prefixes to strip from columns"),
+    remove_suffixes: list[str] | None = Body(None, description="Suffixes to strip from columns"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerStagingResultList | ServerErrorContainer:
+    """Generate staging models from source definitions."""
+    try:
+        results = runner.generate_staging_models(
+            source_name=source_name,
+            table_name=table_name,
+            naming_convention=naming_convention,
+            materialization=materialization,
+            remove_prefixes=remove_prefixes,
+            remove_suffixes=remove_suffixes,
+        )
+        return ServerStagingResultList(
+            results=[
+                ServerStagingResult(
+                    model_name=r["model_name"],
+                    source_name=r["source_name"],
+                    table_name=r["table_name"],
+                    model_sql=r["model_sql"],
+                    schema_yml=r["schema_yml"],
+                    column_mappings=r["column_mappings"],
+                )
+                for r in results
+            ]
+        )
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
 def main() -> None:
     """Entry point for running the FastAPI server via `python -m dbt_core_interface.server`."""
     import argparse
