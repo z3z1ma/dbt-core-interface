@@ -39,6 +39,12 @@ from dbt_core_interface.doc_checker import (
     GapSeverity,
     GapType,
 )
+from dbt_core_interface.performance_profiler import (
+    OptimizationSuggestion,
+    PerformanceMetric,
+    PerformanceProfiler,
+    PerformanceSummary,
+)
 from dbt_core_interface.project import (
     DbtConfiguration,
     DbtProject,
@@ -1263,6 +1269,183 @@ def get_documentation_gaps(
         return ServerErrorContainer(
             error=ServerError(
                 code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+class PerformanceMetricResult(BaseModel):
+    """Container for performance metric results."""
+
+    result: dict[str, t.Any]
+
+
+class PerformanceSummaryResult(BaseModel):
+    """Container for performance summary results."""
+
+    result: dict[str, t.Any]
+
+
+class PerformanceSlowModelsResult(BaseModel):
+    """Container for slow models results."""
+
+    result: list[dict[str, t.Any]]
+
+
+class PerformanceSuggestionsResult(BaseModel):
+    """Container for optimization suggestions results."""
+
+    suggestions: list[dict[str, t.Any]]
+
+
+class PerformanceStatsResult(BaseModel):
+    """Container for profiler stats results."""
+
+    stats: dict[str, t.Any]
+
+
+@app.get("/api/v1/performance/stats")
+def get_performance_stats(
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceStatsResult:
+    """Get overall performance profiler statistics."""
+    profiler = runner.performance_profiler
+    stats = profiler.get_stats()
+    return PerformanceStatsResult(stats=stats)
+
+
+@app.get("/api/v1/performance/slow")
+def get_slow_models(
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of models to return"),
+    threshold_ms: float | None = Query(None, description="Override slow threshold in ms"),
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceSlowModelsResult:
+    """Get models with the slowest average execution times."""
+    profiler = runner.performance_profiler
+    slow_models = profiler.get_slow_models(limit=limit, threshold_ms=threshold_ms)
+    return PerformanceSlowModelsResult(result=[m.to_dict() for m in slow_models])
+
+
+@app.get("/api/v1/performance/summary")
+@app.post("/api/v1/performance/summary")
+def get_performance_summary(
+    response: Response,
+    model_name: str | None = Query(None, description="Filter by model name"),
+    model_unique_id: str | None = Query(None, description="Filter by model unique ID"),
+    days: int = Query(7, ge=1, le=90, description="Number of days to look back"),
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceSummaryResult | ServerErrorContainer:
+    """Get performance summary for a specific model."""
+    profiler = runner.performance_profiler
+    summary = profiler.get_model_summary(
+        model_name=model_name,
+        model_unique_id=model_unique_id,
+        days=days,
+    )
+    if not summary:
+        response.status_code = 404
+        return _create_error_response(
+            ServerErrorCode.ProjectNotRegistered,
+            "No performance data found for the specified model",
+        )
+    return PerformanceSummaryResult(result=summary.to_dict())
+
+
+@app.get("/api/v1/performance/history")
+def get_performance_history(
+    model_name: str | None = Query(None, description="Filter by model name"),
+    model_unique_id: str | None = Query(None, description="Filter by model unique ID"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceMetricResult:
+    """Get historical performance metrics for a model."""
+    profiler = runner.performance_profiler
+    metrics = profiler.get_metrics_history(
+        model_name=model_name,
+        model_unique_id=model_unique_id,
+        limit=limit,
+    )
+    return PerformanceMetricResult(result={"metrics": [m.to_dict() for m in metrics]})
+
+
+@app.get("/api/v1/performance/suggestions")
+@app.post("/api/v1/performance/suggestions")
+def get_optimization_suggestions(
+    threshold_ms: float | None = Query(None, description="Override slow threshold in ms"),
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceSuggestionsResult:
+    """Generate optimization suggestions based on performance data."""
+    profiler = runner.performance_profiler
+    suggestions = profiler.suggest_optimizations(
+        manifest=runner.manifest,
+        threshold_ms=threshold_ms,
+    )
+    return PerformanceSuggestionsResult(suggestions=[s.to_dict() for s in suggestions])
+
+
+@app.post("/api/v1/performance/record")
+def record_performance_metric(
+    response: Response,
+    model_name: str = Body(..., description="Name of the model"),
+    model_unique_id: str = Body(..., description="Unique ID of the model"),
+    execution_time_ms: float = Body(..., description="Execution time in milliseconds"),
+    rows_affected: int = Body(0, description="Number of rows affected"),
+    bytes_processed: int = Body(0, description="Bytes processed"),
+    materialization: str = Body("table", description="Materialization type"),
+    database: str = Body("", description="Database name"),
+    schema: str = Body("", description="Schema name"),
+    runner: DbtProject = Depends(_get_runner),
+) -> PerformanceMetricResult | ServerErrorContainer:
+    """Manually record a performance metric for a model."""
+    try:
+        profiler = runner.performance_profiler
+        metric = profiler.record_metric(
+            model_name=model_name,
+            model_unique_id=model_unique_id,
+            execution_time_ms=execution_time_ms,
+            rows_affected=rows_affected,
+            bytes_processed=bytes_processed,
+            materialization=materialization,
+            database=database,
+            schema=schema,
+        )
+        return PerformanceMetricResult(result=metric.to_dict())
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.get("/api/v1/performance/export")
+def export_performance_metrics(
+    response: Response,
+    output_path: str = Query(..., description="Path to write the export"),
+    format: str = Query("json", description="Export format ('json' or 'csv')"),
+    model_name: str | None = Query(None, description="Filter by model name"),
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerResetResult | ServerErrorContainer:
+    """Export performance metrics to a file."""
+    try:
+        profiler = runner.performance_profiler
+        profiler.export_metrics(
+            output_path=output_path,
+            format=format,
+            model_name=model_name,
+            days=days,
+        )
+        return ServerResetResult(result=f"Metrics exported to {output_path}")
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
                 message=str(e),
                 data=getattr(e, "__dict__", {}),
             )
