@@ -1492,3 +1492,76 @@ class DbtProject:
             return self.doc_checker.check_project(self.manifest, self.project_name, model_name_filter=node.name)
         else:
             return self.doc_checker.check_project(self.manifest, self.project_name)
+
+    def build_dependency_graph(
+        self,
+        model_name: str | None = None,
+        resource_types: list[str] | None = None,
+        direction: str = "LR",
+        depth: int | None = None,
+    ) -> t.Any:
+        """Build a dependency graph showing model lineage.
+
+        Args:
+            model_name: Optional model name to filter graph to.
+                       If None, includes all models in the project.
+            resource_types: Optional list of resource types to include
+                          (e.g., ["model", "source"]). Defaults to ["model", "source"].
+            direction: Graph layout direction. Options:
+                      - "TB": top-to-bottom
+                      - "BT": bottom-to-top
+                      - "LR": left-to-right (default)
+                      - "RL": right-to-left
+            depth: Optional maximum depth from model_name.
+                  Only applicable when model_name is specified.
+
+        Returns:
+            DependencyGraph instance that can be rendered to SVG/PNG
+
+        Example:
+            >>> graph = project.build_dependency_graph()
+            >>> graph.render_svg("dag.svg")
+
+            >>> # Graph for specific model with depth limit
+            >>> graph = project.build_dependency_graph(
+            ...     model_name="my_model",
+            ...     depth=2,
+            ...     direction="TB"
+            ... )
+            >>> graph.render_png("lineage.png")
+        """
+        from dbt_core_interface.dependency_graph import (
+            DependencyGraph,
+            GraphDirection,
+        )
+
+        direction_map = {
+            "TB": GraphDirection.TOP_DOWN,
+            "BT": GraphDirection.BOTTOM_UP,
+            "LR": GraphDirection.LEFT_RIGHT,
+            "RL": GraphDirection.RIGHT_LEFT,
+        }
+        graph_direction = direction_map.get(direction, GraphDirection.LEFT_RIGHT)
+
+        graph = DependencyGraph.from_manifest(
+            self.manifest,
+            model_name=model_name,
+            resource_types=resource_types,
+            direction=graph_direction,
+        )
+
+        # Apply depth filter if specified
+        if model_name and depth is not None:
+            # Find the model's unique_id
+            model_id = None
+            for nid, node in graph.nodes.items():
+                if node.name == model_name and node.resource_type in (
+                    resource_types or ["model", "source"]
+                ):
+                    model_id = nid
+                    break
+
+            if model_id:
+                graph = graph.filter_by_depth(model_id, depth=depth, direction="both")
+
+        return graph
