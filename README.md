@@ -282,6 +282,78 @@ curl -X POST 'http://localhost:8581/api/v1/quality/alerts' \
 
 ---
 
+### Generic Test Library
+
+`dbt-core-interface` includes a comprehensive library of reusable generic dbt tests that can be easily configured via YAML schema files:
+
+```python
+from dbt_core_interface import DbtProject, GenericTestLibrary
+
+# Load your project
+project = DbtProject(project_dir="/path/to/dbt_project")
+
+# Initialize the test library
+library = GenericTestLibrary(project)
+
+# List all available tests
+for test in library.list_tests():
+    print(f"{test.name}: {test.description}")
+
+# Generate schema.yml with suggested tests
+columns = {"id": {}, "email": {}, "status": {}}
+schema_yml = library.generate_schema_yml("users", columns)
+print(schema_yml)
+```
+
+#### Available Generic Tests
+
+- **unique**: Ensures a column has unique values (no duplicates)
+- **not_null**: Ensures a column has no null values
+- **relationships**: Ensures referential integrity between tables
+- **accepted_values**: Ensures column values are from a specified list
+- **recency**: Checks data freshness within a time window
+- **cardinality_equals**: Ensures distinct count matches another table
+
+#### Example YAML Configuration
+
+```yaml
+version: 2
+
+models:
+  - name: users
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+      - name: email
+        tests:
+          - unique
+          - not_null
+
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['active', 'inactive', 'pending']
+```
+
+#### Auto-Suggest Tests
+
+The library can automatically suggest appropriate tests based on column naming patterns:
+
+```python
+# Get suggestions for specific columns
+for col_name in ["id", "user_id", "email", "status"]:
+    suggestions = library.suggest_tests_for_column(col_name)
+    for suggestion in suggestions:
+        print(f"{col_name}: {suggestion.test_type.value}")
+```
+
+For detailed documentation, see `src/dbt_core_interface/generic_tests/docs.md`.
+
+---
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](https://github.com/z3z1ma/dbt-core-interface/blob/main/LICENSE) file for more info.

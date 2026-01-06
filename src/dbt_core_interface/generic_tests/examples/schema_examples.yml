@@ -1,0 +1,310 @@
+# Example schema.yml configurations using the Generic Test Library
+#
+# These examples show how to configure generic tests for common data quality scenarios
+
+version: 2
+
+# ============================================================================
+# Example 1: Basic Primary and Foreign Key Tests
+# ============================================================================
+models:
+  - name: users
+    description: User dimension table
+    columns:
+      - name: id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: User email address
+        tests:
+          - unique
+          - not_null
+
+  - name: orders
+    description: Order fact table
+    columns:
+      - name: id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: Foreign key to users table
+        tests:
+          - not_null
+          - relationships:
+              to: ref('users')
+              field: user_id
+              to_field: id
+
+# ============================================================================
+# Example 2: Accepted Values Test
+# ============================================================================
+models:
+  - name: users
+    columns:
+      - name: status
+        description: User account status
+        tests:
+          - accepted_values:
+              values: ['active', 'inactive', 'suspended', 'pending']
+
+      - name: subscription_tier
+        description: Subscription tier
+        tests:
+          - accepted_values:
+              values: ['free', 'basic', 'premium', 'enterprise']
+
+# ============================================================================
+# Example 3: Severity Levels (warn vs error)
+# ============================================================================
+models:
+  - name: users
+    columns:
+      - name: id
+        tests:
+          - unique: # Critical - fail the build
+              severity: error
+
+          - not_null:
+              severity: error
+
+      - name: middle_name
+        tests:
+          - not_null: # Non-critical - just warn
+              severity: warn
+
+      - name: phone
+        tests:
+          - unique:
+              severity: warn # Phone might be optional/duplicated
+
+# ============================================================================
+# Example 4: Recency Tests for Data Freshness
+# ============================================================================
+models:
+  - name: orders
+    tests:
+      # Ensure orders are updated within 24 hours
+      - recency:
+          column_name: updated_at
+          interval: "24 hour"
+
+  - name: daily_sync
+    tests:
+      # Critical: data must be synced daily
+      - recency:
+          column_name: sync_timestamp
+          interval: "26 hour"  # Allow some buffer
+
+# ============================================================================
+# Example 5: Cardinality Tests
+# ============================================================================
+models:
+  - name: fct_orders
+    description: Orders fact table
+    tests:
+      # Ensure we have orders for all customers
+      - cardinality_equals:
+          column_name: customer_id
+          to: ref('dim_customers')
+
+  - name: fct_line_items
+    tests:
+      # Ensure line items cover all orders
+      - cardinality_equals:
+          column_name: order_id
+          to: ref('fct_orders')
+
+# ============================================================================
+# Example 6: Comprehensive Test Suite
+# ============================================================================
+models:
+  - name: dim_customers
+    description: Customer dimension table
+    columns:
+      # Identification columns
+      - name: customer_id
+        description: Unique customer identifier
+        tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: Customer email
+        tests:
+          - unique
+          - not_null
+
+      # Classification columns
+      - name: customer_type
+        description: Type of customer
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['individual', 'business', 'enterprise']
+
+      - name: status
+        description: Customer status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'inactive', 'churned']
+
+      # Timestamp columns
+      - name: created_at
+        description: When customer was created
+        tests:
+          - not_null
+
+      - name: updated_at
+        description: Last update timestamp
+        tests:
+          - not_null
+
+  - name: fct_orders
+    description: Orders fact table
+    columns:
+      # Primary key
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+      # Foreign keys
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+              to_field: customer_id
+
+      - name: store_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_stores')
+              field: store_id
+              to_field: store_id
+
+      # Business columns
+      - name: order_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned']
+
+      - name: order_total
+        description: Total order amount
+        tests:
+          - not_null
+
+# ============================================================================
+# Example 7: Multi-Column Tests
+# ============================================================================
+models:
+  - name: transactions
+    columns:
+      # Composite key testing
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('users')
+
+      - name: transaction_date
+        tests:
+          - not_null
+
+      # Model-level test for uniqueness on combination
+    tests:
+      - unique:
+          column_name: "CONCAT(user_id, '-', transaction_date, '-', transaction_id)"
+
+# ============================================================================
+# Example 8: Conditional Tests with WHERE clauses
+# ============================================================================
+models:
+  - name: orders
+    columns:
+      - name: order_amount
+        tests:
+          # Only test non-cancelled orders
+          - not_null:
+              where: "status != 'cancelled'"
+
+      - name: shipped_at
+        tests:
+          # Only require shipped date for delivered orders
+          - not_null:
+              where: "status IN ('delivered', 'shipped')"
+
+# ============================================================================
+# Example 9: Testing Reference Data Tables
+# ============================================================================
+models:
+  - name: dim_status_codes
+    description: Reference table for status codes
+    columns:
+      - name: status_code
+        tests:
+          - unique
+          - not_null
+
+      - name: status_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'inactive', 'pending', 'error']
+
+  - name: dim_country_codes
+    description: ISO country codes
+    columns:
+      - name: country_code
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: ['US', 'CA', 'GB', 'FR', 'DE', 'JP', 'AU']  # etc
+
+# ============================================================================
+# Example 10: Staging Layer Tests
+# ============================================================================
+models:
+  - name: stg_users
+    description: Staging users table from source
+    columns:
+      - name: user_id
+        tests:
+          - unique
+          - not_null
+
+      - name: email
+        tests:
+          - not_null
+
+      - name: full_name
+        tests:
+          - not_null:
+              severity: warn  # Might be missing in source
+
+  - name: stg_orders
+    description: Staging orders from source
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        tests:
+          - not_null
+
+      - name: order_date
+        tests:
+          - not_null
