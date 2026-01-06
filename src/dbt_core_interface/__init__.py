@@ -1,5 +1,12 @@
 """Dbt Core Interface."""
 
+from dbt_core_interface.generic_tests import (  # noqa: F401
+    GenericTestConfig,
+    GenericTestDefinition,
+    GenericTestLibrary,
+    GenericTestType,
+    TestSeverity,
+)
 from dbt_core_interface.project import *  # noqa: F401, F403
 from dbt_core_interface.quality import *  # noqa: F401, F403
 from dbt_core_interface.source_generator import (  # noqa: F401
