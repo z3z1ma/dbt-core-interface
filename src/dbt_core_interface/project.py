@@ -60,6 +60,12 @@ from dbt_common.context import set_invocation_context
 from dbt_common.events.event_manager_client import add_logger_to_manager
 from dbt_common.events.logger import LoggerConfig
 
+from dbt_core_interface.test_suggester import (
+    DEFAULT_PATTERNS,
+    ProjectTestPatterns,
+    TestSuggester,
+)
+
 if t.TYPE_CHECKING:
     from dbt.cli.main import dbtRunnerResult
     from sqlfluff.core.config import FluffConfig
@@ -1134,3 +1140,144 @@ class DbtProject:
         """Use for pickling the DbtProject instance."""
         config = self.to_config()
         return (self.__class__.from_config, (config,))
+    _test_suggester: TestSuggester | None = None
+    _test_patterns: ProjectTestPatterns | None = None
+
+    def get_test_suggester(self, learn: bool = True) -> TestSuggester:
+        """Get or create the test suggester for this project.
+
+        Args:
+            learn: Whether to learn patterns from existing project tests
+
+        Returns:
+            TestSuggester instance
+        """
+        if self._test_suggester is None:
+            self._test_patterns = ProjectTestPatterns()
+            if learn:
+                self._test_patterns.learn_from_manifest(self.manifest)
+            self._test_suggester = TestSuggester(
+                custom_patterns=[],
+                learned_patterns=self._test_patterns,
+            )
+        return self._test_suggester
+
+    def suggest_tests(
+        self,
+        model_name: str | None = None,
+        model_path: Path | str | None = None,
+        learn: bool = True,
+    ) -> list[dict[str, t.Any]]:
+        """Suggest tests for a model or all models.
+
+        Args:
+            model_name: Name of specific model to analyze (None for all models)
+            model_path: Path to model file (alternative to model_name)
+            learn: Whether to learn from existing project tests first
+
+        Returns:
+            List of test suggestions as dictionaries
+        """
+        suggester = self.get_test_suggester(learn=learn)
+        results: list[dict[str, t.Any]] = []
+
+        if model_name:
+            node = self.ref(model_name)
+            if node:
+                suggestions = suggester.suggest_tests_for_model(node, self.manifest)
+                results.append(
+                    {
+                        "model": node.name,
+                        "unique_id": node.unique_id,
+                        "path": node.original_file_path,
+                        "suggestions": [
+                            {
+                                "test_type": s.test_type.value,
+                                "column_name": s.column_name,
+                                "reason": s.reason,
+                                "config": s.config,
+                            }
+                            for s in suggestions
+                        ],
+                    }
+                )
+        elif model_path:
+            node = self.get_node_by_path(model_path)
+            if node:
+                suggestions = suggester.suggest_tests_for_model(node, self.manifest)
+                results.append(
+                    {
+                        "model": node.name,
+                        "unique_id": node.unique_id,
+                        "path": node.original_file_path,
+                        "suggestions": [
+                            {
+                                "test_type": s.test_type.value,
+                                "column_name": s.column_name,
+                                "reason": s.reason,
+                                "config": s.config,
+                            }
+                            for s in suggestions
+                        ],
+                    }
+                )
+        else:
+            # Analyze all models
+            for node in self.manifest.nodes.values():
+                if node.resource_type == "model":
+                    suggestions = suggester.suggest_tests_for_model(node, self.manifest)
+                    results.append(
+                        {
+                            "model": node.name,
+                            "unique_id": node.unique_id,
+                            "path": node.original_file_path,
+                            "suggestions": [
+                                {
+                                    "test_type": s.test_type.value,
+                                    "column_name": s.column_name,
+                                    "reason": s.reason,
+                                    "config": s.config,
+                                }
+                                for s in suggestions
+                            ],
+                        }
+                    )
+
+        return results
+
+    def generate_test_yml(
+        self,
+        model_name: str | None = None,
+        model_path: Path | str | None = None,
+        learn: bool = True,
+    ) -> str:
+        """Generate YAML schema file with suggested tests.
+
+        Args:
+            model_name: Name of specific model (None for all models)
+            model_path: Path to model file (alternative to model_name)
+            learn: Whether to learn from existing project tests first
+
+        Returns:
+            YAML string with test definitions
+        """
+        suggester = self.get_test_suggester(learn=learn)
+
+        if model_name:
+            node = self.ref(model_name)
+            if node:
+                return suggester.generate_test_yml(node, self.manifest)
+            return ""
+        elif model_path:
+            node = self.get_node_by_path(model_path)
+            if node:
+                return suggester.generate_test_yml(node, self.manifest)
+            return ""
+        else:
+            # Generate for all models
+            lines: list[str] = []
+            for node in self.manifest.nodes.values():
+                if node.resource_type == "model":
+                    yml = suggester.generate_test_yml(node, self.manifest)
+                    lines.append(yml)
+            return "\n\n".join(lines)

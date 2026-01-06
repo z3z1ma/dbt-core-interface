@@ -951,6 +951,93 @@ def add_alert_channel(
         )
 
 
+class TestSuggestionResult(BaseModel):
+    """Container for test suggestion results."""
+
+    model: str
+    unique_id: str
+    path: str
+    suggestions: list[dict[str, t.Any]]
+
+
+class ServerTestSuggestionResult(BaseModel):
+    """Container for test suggestions response."""
+
+    result: list[TestSuggestionResult]
+
+
+class ServerTestYmlResult(BaseModel):
+    """Container for generated test YAML."""
+
+    result: str
+
+
+@app.get("/api/v1/suggest-tests")
+@app.post("/api/v1/suggest-tests")
+def suggest_tests(
+    response: Response,
+    model_name: str | None = Query(None, description="Name of specific model to analyze"),
+    model_path: str | None = Query(None, description="Path to model file"),
+    learn: bool = Query(True, description="Whether to learn from existing project tests"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerTestSuggestionResult | ServerErrorContainer:
+    """Suggest tests for dbt models based on column patterns and project conventions."""
+    try:
+        suggestions = runner.suggest_tests(
+            model_name=model_name,
+            model_path=Path(model_path) if model_path else None,
+            learn=learn,
+        )
+        return ServerTestSuggestionResult(
+            result=[
+                TestSuggestionResult(
+                    model=s["model"],
+                    unique_id=s["unique_id"],
+                    path=s["path"],
+                    suggestions=s["suggestions"],
+                )
+                for s in suggestions
+            ]
+        )
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.get("/api/v1/generate-test-yml")
+@app.post("/api/v1/generate-test-yml")
+def generate_test_yml(
+    response: Response,
+    model_name: str | None = Query(None, description="Name of specific model"),
+    model_path: str | None = Query(None, description="Path to model file"),
+    learn: bool = Query(True, description="Whether to learn from existing project tests"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerTestYmlResult | ServerErrorContainer:
+    """Generate YAML schema file with suggested tests."""
+    try:
+        yml = runner.generate_test_yml(
+            model_name=model_name,
+            model_path=Path(model_path) if model_path else None,
+            learn=learn,
+        )
+        return ServerTestYmlResult(result=yml)
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
 def main() -> None:
     """Entry point for running the FastAPI server via `python -m dbt_core_interface.server`."""
     import argparse
