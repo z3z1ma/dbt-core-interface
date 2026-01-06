@@ -1,5 +1,19 @@
 """Dbt Core Interface."""
 
+from dbt_core_interface.generic_tests import (  # noqa: F401
+    GenericTestConfig,
+    GenericTestDefinition,
+    GenericTestLibrary,
+    GenericTestType,
+    TestSeverity,
+)
+from dbt_core_interface.dependency_graph import (  # noqa: F401
+    DependencyGraph,
+    GraphDirection,
+    GraphEdge,
+    GraphFormat,
+    GraphNode,
+)
 from dbt_core_interface.doc_checker import (  # noqa: F401
     DocumentationChecker,
     DocumentationGap,
@@ -8,6 +22,12 @@ from dbt_core_interface.doc_checker import (  # noqa: F401
     GapType,
     ModelDocumentationStatus,
 )
+from dbt_core_interface.dependency_graph import (  # noqa: F401
+    DependencyGraph,
+    GraphDirection,
+    GraphEdge,
+    GraphFormat,
+    GraphNode,
 from dbt_core_interface.dependency_graph import (  # noqa: F401
     DependencyGraph,
     GraphDirection,
