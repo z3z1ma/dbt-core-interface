@@ -4,7 +4,6 @@ import pytest
 
 from dbt_core_interface.test_suggester import (
     ColumnPattern,
-    DEFAULT_PATTERNS,
     ProjectTestPatterns,
     TestSuggester,
     TestSuggestion,
@@ -168,6 +167,16 @@ class MockNode:
         columns: dict[str, dict[str, str]],
         resource_type: str = "model",
     ) -> None:
+        """Initialize a MockNode for testing.
+
+        Args:
+            name: The model name
+            unique_id: The unique identifier for the node
+            path: The file path
+            columns: Dictionary mapping column names to metadata
+            resource_type: The dbt resource type (default: model)
+
+        """
         self.name = name
         self.unique_id = unique_id
         self.original_file_path = path

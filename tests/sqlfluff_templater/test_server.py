@@ -1,3 +1,5 @@
+"""Tests for dbt-core-interface server module."""
+
 # import difflib
 # import os
 # import shutil

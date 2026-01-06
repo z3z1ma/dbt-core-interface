@@ -72,6 +72,9 @@ fail_under = 30
 
 [tool.ruff]
 line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
 select = ["B", "B9", "C", "D", "E", "F", "N", "S", "W"]
 ignore = ["E501", "D203", "D213"]
 exclude = [
@@ -98,9 +101,8 @@ exclude = [
 ]
 per-file-ignores = { "tests/*" = ["S101"], "src/dbt_core_interface/project.py" = ["E402"], "src/dbt_core_interface/server.py" = ["B008"] }
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-target-version = "py310"
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 15
 
 [build-system]

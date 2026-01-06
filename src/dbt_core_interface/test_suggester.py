@@ -190,6 +190,7 @@ class TestSuggester:
         Args:
             custom_patterns: Additional patterns to use for detection
             learned_patterns: Previously learned patterns from the project
+
         """
         self.patterns = DEFAULT_PATTERNS + (custom_patterns or [])
         self.learned = learned_patterns or ProjectTestPatterns()
@@ -205,6 +206,7 @@ class TestSuggester:
 
         Returns:
             List of test suggestions
+
         """
         suggestions: list[TestSuggestion] = []
 
@@ -212,7 +214,7 @@ class TestSuggester:
         columns = self._extract_columns(model)
         logger.debug(f"Analyzing {len(columns)} columns for model {model.name}")
 
-        for column_name, column_info in columns.items():
+        for column_name, _column_info in columns.items():
             # Check learned patterns first
             learned_tests = self.learned.get_tests_for_column(column_name)
             if learned_tests:
@@ -223,7 +225,7 @@ class TestSuggester:
                         TestSuggestion(
                             test_type=test_type,
                             column_name=column_name,
-                            reason=f"Learned from existing project tests",
+                            reason="Learned from existing project tests",
                             config=config,
                         )
                     )
@@ -303,15 +305,16 @@ class TestSuggester:
 
         Returns:
             YAML string with test definitions
+
         """
         suggestions = self.suggest_tests_for_model(model, manifest)
 
         lines = [
-            f"version: 2",
-            f"models:",
+            "version: 2",
+            "models:",
             f"  - name: {model.name}",
             f"    description: {model.description or 'Add description'}",
-            f"    columns:",
+            "    columns:",
         ]
 
         # Group suggestions by column
@@ -334,7 +337,7 @@ class TestSuggester:
                 col_info = f" description: {col_info_obj.get('description', '')}"
 
             lines.append(f"      - name: {col_name}{col_info}")
-            lines.append(f"        tests:")
+            lines.append("        tests:")
 
             for suggestion in col_suggestions:
                 test_line = f"          - {suggestion.test_type.value}"
@@ -346,7 +349,7 @@ class TestSuggester:
 
         # Generate model-level tests
         if model_level:
-            lines.append(f"    tests:")
+            lines.append("    tests:")
             for suggestion in model_level:
                 lines.append(f"      - {suggestion.test_type.value}")
 
@@ -357,6 +360,7 @@ class TestSuggester:
 
         Args:
             manifest: The dbt manifest containing existing tests
+
         """
         self.learned.learn_from_manifest(manifest)
         logger.info(f"Learned patterns from {len(self.learned.column_tests)} columns")

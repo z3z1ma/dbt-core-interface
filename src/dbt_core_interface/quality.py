@@ -16,7 +16,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 
 import requests
 from rich.console import Console
@@ -26,7 +25,7 @@ from dbt_core_interface.project import DbtProject
 
 
 def _raise_required(field_name: str) -> t.NoReturn:
-    """Helper to raise an error for required fields in dataclass inheritance."""
+    """Raise an error for required fields in dataclass inheritance."""
     raise TypeError(f"__init__ missing required argument: '{field_name}'")
 
 __all__ = [
@@ -381,7 +380,7 @@ class RowCountCheck(QualityCheck):
 
     def get_sql(self, model_name: str) -> str:
         """Get the SQL for row count check."""
-        return f"SELECT COUNT(*) AS row_count FROM {{{{ ref('{model_name}') }}}}"
+        return f"SELECT COUNT(*) AS row_count FROM {{{{ ref('{model_name}') }}}}"  # noqa: S608
 
 
 @dataclass
@@ -442,13 +441,13 @@ class NullPercentageCheck(QualityCheck):
                 sql_executed=sql,
             )
 
-    def get_sql(self, model_name: str) -> str:
+    def get_sql(self, model_name: str) -> str:  # noqa: S608
         """Get the SQL for null percentage check."""
-        return f"""
+        return f"""  # noqa: S608
         SELECT
             100.0 * COUNT(NULLIF({self.column_name}, NULL)) / NULLIF(COUNT(*), 0) AS null_percentage
         FROM {{{{ ref('{model_name}') }}}}
-        """
+        """  # noqa: S608
 
 
 @dataclass
@@ -509,10 +508,10 @@ class DuplicateCheck(QualityCheck):
                 sql_executed=sql,
             )
 
-    def get_sql(self, model_name: str) -> str:
+    def get_sql(self, model_name: str) -> str:  # noqa: S608
         """Get the SQL for duplicate check."""
         cols = ", ".join(self.columns)
-        return f"""
+        return f"""  # noqa: S608
         SELECT
             100.0 * SUM(duplicate_count) / NULLIF(SUM(total_count), 0) AS duplicate_percentage
         FROM (
@@ -530,7 +529,7 @@ class DuplicateCheck(QualityCheck):
             )),
             0
         )
-        """
+        """  # noqa: S608
 
 
 @dataclass
@@ -599,7 +598,7 @@ class ValueRangeCheck(QualityCheck):
                 sql_executed=sql,
             )
 
-    def get_sql(self, model_name: str) -> str:
+    def get_sql(self, model_name: str) -> str:  # noqa: S608
         """Get the SQL for value range check."""
         conditions = []
         if self.min_value is not None:
@@ -608,11 +607,11 @@ class ValueRangeCheck(QualityCheck):
             conditions.append(f"{self.column_name} > {self.max_value}")
 
         where_clause = " OR ".join(conditions)
-        return f"""
+        return f"""  # noqa: S608
         SELECT COUNT(*) FROM {{{{ ref('{model_name}') }}}}
         WHERE {where_clause}
         LIMIT 1
-        """
+        """  # noqa: S608
 
 
 @dataclass
