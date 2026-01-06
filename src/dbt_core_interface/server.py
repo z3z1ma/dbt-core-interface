@@ -1036,6 +1036,65 @@ def generate_test_yml(
         )
 
 
+class SourceGenerationRequest(BaseModel):
+    """Request model for source generation."""
+
+    schema: str | None = None
+    tables: list[str] = []
+    source_name: str = "raw"
+    strategy: str = "specific_schema"
+    exclude_schemas: list[str] = []
+    exclude_tables: list[str] = []
+    include_descriptions: bool = True
+    infer_descriptions: bool = True
+    include_tags: bool = False
+
+
+@app.get("/api/v1/generate-sources")
+@app.post("/api/v1/generate-sources")
+def generate_sources(
+    response: Response,
+    request: SourceGenerationRequest | None = None,
+    schema: str | None = Query(None, description="Schema name to introspect"),
+    tables: str | None = Query(None, description="Comma-separated table names"),
+    source_name: str = Query("raw", description="Name for the source definition"),
+    strategy: str = Query("specific_schema", description="Generation strategy"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerTestYmlResult | ServerErrorContainer:
+    """Generate dbt source YAML configuration by introspecting the database."""
+    try:
+        # Parse request body if provided
+        req_data = request or SourceGenerationRequest()
+
+        # Override with query params if body not provided
+        if not request:
+            if schema:
+                req_data.schema = schema
+            if tables:
+                req_data.tables = [t.strip() for t in tables.split(",")]
+            if source_name:
+                req_data.source_name = source_name
+            if strategy:
+                req_data.strategy = strategy
+
+        yml = runner.generate_sources(
+            schema=req_data.schema,
+            tables=req_data.tables if req_data.tables else None,
+            source_name=req_data.source_name,
+            strategy=req_data.strategy,
+        )
+        return ServerTestYmlResult(result=yml)
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
 def main() -> None:
     """Entry point for running the FastAPI server via `python -m dbt_core_interface.server`."""
     import argparse

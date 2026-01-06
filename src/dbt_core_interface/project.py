@@ -1283,3 +1283,51 @@ class DbtProject:
                     yml = suggester.generate_test_yml(node, self.manifest)
                     lines.append(yml)
             return "\n\n".join(lines)
+
+    def generate_sources(
+        self,
+        schema: str | None = None,
+        tables: list[str] | None = None,
+        source_name: str = "raw",
+        strategy: str = "specific_schema",
+    ) -> str:
+        """Generate dbt source YAML configuration by introspecting the database.
+
+        Args:
+            schema: Schema name to introspect (for specific_schema strategy).
+            tables: List of table names (for specific_tables strategy).
+            source_name: Name for the source definition.
+            strategy: Generation strategy - one of:
+                - 'specific_schema': Generate for a specific schema (default)
+                - 'specific_tables': Generate for specific tables
+                - 'all_schemas': Generate for all accessible schemas
+
+        Returns:
+            YAML string with source definitions.
+        """
+        from dbt_core_interface.source_generator import (
+            SourceGenerationOptions,
+            SourceGenerator,
+            SourceGenerationStrategy,
+            to_yaml,
+        )
+
+        # Map strategy string to enum
+        strategy_map = {
+            "all_schemas": SourceGenerationStrategy.ALL_SCHEMAS,
+            "specific_schema": SourceGenerationStrategy.SPECIFIC_SCHEMA,
+            "specific_tables": SourceGenerationStrategy.SPECIFIC_TABLES,
+        }
+        if strategy not in strategy_map:
+            raise ValueError(f"Invalid strategy: {strategy}. Must be one of {list(strategy_map.keys())}")
+
+        options = SourceGenerationOptions(
+            strategy=strategy_map[strategy],
+            schema_name=schema,
+            table_names=tables or [],
+            source_name=source_name,
+        )
+
+        generator = SourceGenerator(self)
+        sources = generator.generate_sources(options)
+        return to_yaml(sources, quote_identifiers=False)
