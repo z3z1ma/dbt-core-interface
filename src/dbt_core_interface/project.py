@@ -381,6 +381,15 @@ class DbtProject:
             raise RuntimeError("Manifest not loaded...")
         return self._manifest
 
+    @manifest.setter
+    def manifest(self, value: Manifest) -> None:
+        """Set the manifest, useful for reload scenarios.
+
+        This allows external code (e.g., dbt-osmosis) to update the manifest
+        without recreating the DbtProject instance.
+        """
+        self._manifest = value
+
     @property
     def project_name(self) -> str:
         """The name of the dbt project."""
@@ -482,6 +491,14 @@ class DbtProject:
         self.__manifest_loader.macro_hook = self._adapter.connections.set_query_header  # pyright: ignore[reportAttributeAccessIssue]
 
         _ = atexit.register(self._adapter.connections.cleanup_all)
+
+        # Register adapter in FACTORY.adapters for compatibility with dbt parsers
+        # that use get_adapter(config) which looks in FACTORY.adapters
+        from dbt.adapters.factory import FACTORY
+        adapter_type = self.runtime_config.credentials.type
+        if adapter_type not in FACTORY.adapters:
+            FACTORY.adapters[adapter_type] = self._adapter
+            logger.debug(f"Registered adapter '{adapter_type}' in FACTORY.adapters")
 
         return self._adapter
 
