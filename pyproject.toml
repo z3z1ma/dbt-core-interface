@@ -43,7 +43,9 @@ dev = [
   "ruff~=0.12.0",
   "coverage[toml]>=6.2,<7",
   "pytest>=8.0.0,<9",
-  "sqlfluff>=2.3.2,<4"
+  "sqlfluff>=2.3.2,<4",
+  "mypy>=1.0.0",
+  "types-requests>=2.31.0",
 ]
 test = [
   "dbt-postgres~=1.8.0",
@@ -104,6 +106,42 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_configs = false
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+disable_error_code = ["import-untyped"]
+exclude = [
+    "tests/",
+]
+
+[[tool.mypy.overrides]]
+module = "dbt.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sqlfluff.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fastapi.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "agate.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "uvicorn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "requests"
+ignore_missing_imports = true
 
 [build-system]
 requires = ["uv_build>=0.7.17,<0.8.0"]

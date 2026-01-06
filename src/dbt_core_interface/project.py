@@ -565,7 +565,7 @@ class DbtProject:
         tie to document/didSave via an editor extension. Paths should be relative to the
         project root or absolute paths.
         """
-        changes = {"added": [], "changed": [], "deleted": []}
+        changes: dict[str, list[InputFile]] = {"added": [], "changed": [], "deleted": []}
         for path in paths:
             path = Path(path)
             if path.is_absolute():
@@ -627,6 +627,7 @@ class DbtProject:
             )
             if node:
                 return node
+        return None
 
     def source(self, source_name: str, table_name: str) -> SourceDefinition | None:
         """Look up a source by name and table name.
@@ -771,6 +772,7 @@ class DbtProject:
         for node in self.manifest.nodes.values():
             if self.project_root / node.original_file_path == path:
                 return node
+        return None
 
     def command(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> dbtRunnerResult:
         """Run a dbt command with the current project manifest."""
@@ -898,7 +900,7 @@ class DbtProject:
         extra_config_path: Path | str | None = None,
         ignore_local_config: bool = False,
         fluff_conf: FluffConfig | None = None,
-    ) -> list[LintingRecord]:
+    ) -> list[LintingRecord]:  # type: ignore[valid-type]
         """Lint specified file or SQL string.
 
         Args:
@@ -1142,7 +1144,7 @@ class DbtProject:
         model_name: str | None = None,
         model_path: Path | str | None = None,
         learn: bool = True,
-    ) -> list[dict[str, t.Any]]:
+    ) -> list[dict[str, t.Any]]:  # type: ignore[valid-type]
         """Suggest tests for a model or all models.
 
         Args:

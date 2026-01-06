@@ -51,6 +51,7 @@ class DbtProjectContainer:
                 if p == root or root in p.parents:
                     return project
         logger.debug("No project found in tree for path '%s'.", p)
+        return None
 
     def get_default_project(self) -> DbtProject | None:
         """Return the default project (first added), or None if no projects exist."""
@@ -112,7 +113,7 @@ class DbtProjectContainer:
         with self._lock:
             project = self._projects.pop(p := Path(path).expanduser().resolve(), None)
             if project is None:
-                return
+                return None
             if p == self._default_project:
                 self._default_project = next(iter(self._projects), None)
             return project

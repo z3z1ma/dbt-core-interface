@@ -399,7 +399,7 @@ def register_project(
     project_path = Path(project_dir).expanduser().resolve()
     maybe_dbt_project = runners.get_project(project_path)
     if maybe_dbt_project:
-        args = {}
+        args: dict[str, t.Any] = {}
         if profile:
             args["profile"] = profile
         if target:
@@ -407,7 +407,7 @@ def register_project(
         if profiles_dir:
             args["profiles_dir"] = profiles_dir
         if vars:
-            args["vars"] = vars
+            args["vars"] = vars or {}
         if args:
             maybe_dbt_project.args = args
         return ServerRegisterResult(
@@ -547,7 +547,7 @@ def lint_sql(
     runner: DbtProject = Depends(_get_runner),
 ) -> ServerLintResult | ServerErrorContainer:
     """Lint SQL string or file via SQLFluff."""
-    records = []
+    records: list[dict[str, t.Any] | t.Any] = []
     try:
         if sql_path:
             records = runner.lint(
@@ -992,6 +992,8 @@ def suggest_tests(
             model_path=Path(model_path) if model_path else None,
             learn=learn,
         )
+        # Convert to list to ensure it's iterable for mypy
+        suggestions_list: list[dict[str, t.Any]] = list(suggestions)  # type: ignore[assignment]
         return ServerTestSuggestionResult(
             result=[
                 TestSuggestionResult(
@@ -1000,7 +1002,7 @@ def suggest_tests(
                     path=s["path"],
                     suggestions=s["suggestions"],
                 )
-                for s in suggestions
+                for s in suggestions_list
             ]
         )
     except Exception as e:
