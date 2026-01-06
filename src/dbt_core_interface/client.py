@@ -346,3 +346,30 @@ class DbtInterfaceClient:
         resp = self._request("GET", "/api/v1/heartbeat")
         pulse = resp.json()
         return pulse["result"]["status"] == "ready"
+
+    def generate_sources(
+        self,
+        schema: str | None = None,
+        tables: list[str] | None = None,
+        source_name: str = "raw",
+        strategy: str = "specific_schema",
+    ) -> dict[str, t.Any]:
+        """Generate dbt source YAML configuration by introspecting the database.
+
+        Args:
+            schema: Schema name to introspect (for specific_schema strategy).
+            tables: List of table names (for specific_tables strategy).
+            source_name: Name for the source definition.
+            strategy: Generation strategy - 'specific_schema', 'specific_tables', or 'all_schemas'.
+
+        Returns:
+            Dict with 'result' key containing the YAML string.
+        """
+        params: dict[str, t.Any] = {"source_name": source_name, "strategy": strategy}
+        if schema:
+            params["schema"] = schema
+        if tables:
+            params["tables"] = ",".join(tables)
+
+        resp = self._request("GET", "/api/v1/generate-sources", params=params)
+        return resp.json()
