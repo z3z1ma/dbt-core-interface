@@ -70,6 +70,8 @@ if t.TYPE_CHECKING:
     from sqlfluff.core.config import FluffConfig
     from sqlfluff.core.linter.linted_dir import LintingRecord
 
+    from dbt_core_interface.graph import DependencyGraph
+
 
 def _set_invocation_context() -> None:
     set_invocation_context(get_env())
@@ -834,6 +836,45 @@ class DbtProject:
     snapshot = functools.partialmethod(command, "snapshot")
     source_freshness = functools.partialmethod(command, "source freshness")
     test = functools.partialmethod(command, "test")
+
+    def dependency_graph(
+        self,
+        resource_types: list[str] | None = None,
+        packages: list[str] | None = None,
+    ) -> DependencyGraph:
+        """Build a dependency graph from the manifest."""
+        from dbt_core_interface.graph import build_dependency_graph
+
+        return build_dependency_graph(self.manifest, resource_types, packages)
+
+    def get_node_lineage(
+        self,
+        node_id: str,
+        upstream_depth: int = 3,
+        downstream_depth: int = 3,
+    ) -> dict[str, t.Any]:
+        """Get the lineage (upstream and downstream) for a node."""
+        from dbt_core_interface.graph import get_node_info
+
+        graph = self.dependency_graph()
+        lineage = graph.get_lineage(node_id, upstream_depth, downstream_depth)
+        node_info = get_node_info(self.manifest, node_id)
+        if node_info:
+            lineage["node"] = node_info
+        return lineage
+
+    def export_dependency_graph(
+        self,
+        output_path: Path | str,
+        focus_node: str | None = None,
+        upstream_depth: int = 2,
+        downstream_depth: int = 2,
+    ) -> None:
+        """Export a dependency graph to a file."""
+        from dbt_core_interface.graph import export_graph
+
+        graph = self.dependency_graph()
+        export_graph(graph, output_path, focus_node, upstream_depth, downstream_depth)
 
     _sqlfluff_mtime_cache: dict[Path, float] = {}
 

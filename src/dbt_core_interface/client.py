@@ -15,6 +15,8 @@ from dbt_core_interface.server import (
     ServerCompileResult,
     ServerErrorContainer,
     ServerFormatResult,
+    ServerGraphExportResult,
+    ServerLineageResult,
     ServerLintResult,
     ServerRegisterResult,
     ServerResetResult,
@@ -373,3 +375,43 @@ class DbtInterfaceClient:
 
         resp = self._request("GET", "/api/v1/generate-sources", params=params)
         return resp.json()
+    def get_node_lineage(
+        self,
+        node_id: str,
+        upstream_depth: int = 3,
+        downstream_depth: int = 3,
+    ) -> ServerLineageResult:
+        """Get upstream and downstream lineage for a specific node."""
+        params: dict[str, t.Any] = {
+            "node_id": node_id,
+            "upstream_depth": upstream_depth,
+            "downstream_depth": downstream_depth,
+        }
+        resp = self._request("GET", "/api/v1/graph/lineage", params=params)
+        return ServerLineageResult.model_validate(resp.json())
+
+    def list_graph_nodes(self, resource_type: str | None = None) -> dict[str, t.Any]:
+        """List all nodes in the dependency graph."""
+        params: dict[str, t.Any] = {}
+        if resource_type is not None:
+            params["resource_type"] = resource_type
+        resp = self._request("GET", "/api/v1/graph/list", params=params)
+        return resp.json()
+
+    def export_graph(
+        self,
+        output_path: str,
+        focus_node: str | None = None,
+        upstream_depth: int = 2,
+        downstream_depth: int = 2,
+    ) -> ServerGraphExportResult:
+        """Export a dependency graph to a file."""
+        params: dict[str, t.Any] = {
+            "output_path": output_path,
+            "upstream_depth": upstream_depth,
+            "downstream_depth": downstream_depth,
+        }
+        if focus_node is not None:
+            params["focus_node"] = focus_node
+        resp = self._request("POST", "/api/v1/graph/export", params=params)
+        return ServerGraphExportResult.model_validate(resp.json())

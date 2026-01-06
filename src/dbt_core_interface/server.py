@@ -539,6 +539,34 @@ class ServerFormatResult(BaseModel):
     sql: str | None
 
 
+class GraphNodeInfo(BaseModel):
+    """Container for graph node information."""
+
+    unique_id: str
+    name: str
+    resource_type: str
+    package_name: str
+    file_path: str
+    depends_on: list[str] = []
+    dependents: list[str] = []
+
+
+class ServerLineageResult(BaseModel):
+    """Container for lineage query results."""
+
+    node: GraphNodeInfo | None
+    upstream: list[GraphNodeInfo]
+    downstream: list[GraphNodeInfo]
+
+
+class ServerGraphExportResult(BaseModel):
+    """Container for graph export results."""
+
+    success: bool
+    message: str
+    path: str | None = None
+
+
 @app.post("/lint")  # legacy extension support
 @app.get("/api/v1/lint")
 @app.post("/api/v1/lint")
@@ -613,6 +641,99 @@ def format_sql(
         response.status_code = 500
         return _create_error_response(ServerErrorCode.CompileSqlFailure, str(e), {})
     return ServerFormatResult(result=success, sql=formatted)
+
+
+@app.get("/api/v1/graph/lineage")
+def get_node_lineage(
+    response: Response,
+    node_id: str = Query(..., description="Node unique ID to get lineage for"),
+    upstream_depth: int = Query(3, ge=0, le=10, description="Upstream depth"),
+    downstream_depth: int = Query(3, ge=0, le=10, description="Downstream depth"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerLineageResult | ServerErrorContainer:
+    """Get upstream and downstream lineage for a specific node."""
+    try:
+        lineage = runner.get_node_lineage(node_id, upstream_depth, downstream_depth)
+
+        def to_graph_node(n: t.Any) -> GraphNodeInfo:
+            return GraphNodeInfo(
+                unique_id=getattr(n, "unique_id", ""),
+                name=getattr(n, "name", ""),
+                resource_type=getattr(n, "resource_type", ""),
+                package_name=getattr(n, "package_name", ""),
+                file_path=getattr(n, "file_path", ""),
+                depends_on=getattr(n, "depends_on", []),
+                dependents=getattr(n, "dependents", []),
+            )
+
+        node_info = to_graph_node(lineage["node"]) if lineage["node"] else None
+        upstream = [to_graph_node(n) for n in lineage["upstream"]]
+        downstream = [to_graph_node(n) for n in lineage["downstream"]]
+
+        return ServerLineageResult(node=node_info, upstream=upstream, downstream=downstream)
+    except ValueError as e:
+        response.status_code = 404
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.MissingRequiredParams,
+                message=str(e),
+                data={},
+            )
+        )
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data={},
+            )
+        )
+
+
+@app.get("/api/v1/graph/list")
+def list_graph_nodes(
+    resource_type: str | None = Query(None, description="Filter by resource type"),
+    runner: DbtProject = Depends(_get_runner),
+) -> dict[str, t.Any]:
+    """List all nodes in the dependency graph."""
+    from dbt_core_interface.graph import list_models
+
+    nodes = list_models(runner.manifest, resource_type)
+    return {"nodes": nodes}
+
+
+@app.post("/api/v1/graph/export")
+def export_graph(
+    response: Response,
+    output_path: str = Query(..., description="Output file path (.svg, .png, or .dot)"),
+    focus_node: str | None = Query(None, description="Node to focus the graph on"),
+    upstream_depth: int = Query(2, ge=0, le=10, description="Upstream depth"),
+    downstream_depth: int = Query(2, ge=0, le=10, description="Downstream depth"),
+    runner: DbtProject = Depends(_get_runner),
+) -> ServerGraphExportResult | ServerErrorContainer:
+    """Export a dependency graph to a file."""
+    try:
+        runner.export_dependency_graph(output_path, focus_node, upstream_depth, downstream_depth)
+        return ServerGraphExportResult(success=True, message="Graph exported successfully", path=output_path)
+    except ValueError as e:
+        response.status_code = 400
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.MissingRequiredParams,
+                message=str(e),
+                data={},
+            )
+        )
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data={},
+            )
+        )
 
 
 @app.post("/api/v1/command")
