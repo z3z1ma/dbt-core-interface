@@ -110,6 +110,24 @@ class DbtInterfaceClient:
         json_payload: t.Any = None,
         headers: dict[str, str] | None = None,
     ) -> requests.Response:
+        """Make HTTP requests to the server.
+
+        Args:
+            method: HTTP method (GET, POST, DELETE, etc.).
+            path: API endpoint path.
+            params: Query parameters to include in the request.
+            data: Raw data to send in the request body.
+            json_payload: JSON data to send in the request body.
+            headers: Additional headers to include in the request.
+
+        Returns:
+            The requests.Response object.
+
+        Raises:
+            ServerErrorException: If the server returns an error response.
+            requests.HTTPError: If the request fails for non-server-error reasons.
+
+        """
         url = urljoin(self.base_url, path)
         headers = headers or {}
         params = params or {}
