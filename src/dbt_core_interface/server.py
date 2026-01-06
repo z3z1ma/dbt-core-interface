@@ -33,6 +33,12 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from dbt_core_interface.container import DbtProjectContainer
+from dbt_core_interface.doc_checker import (
+    DocumentationChecker,
+    DocumentationReport,
+    GapSeverity,
+    GapType,
+)
 from dbt_core_interface.project import (
     DbtConfiguration,
     DbtProject,
@@ -1163,6 +1169,93 @@ def generate_staging_models(
                 for r in results
             ]
         )
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+class DocumentationCheckResult(BaseModel):
+    """Container for documentation check results."""
+
+    result: dict[str, t.Any]
+
+
+class DocumentationGapsResult(BaseModel):
+    """Container for documentation gaps results."""
+
+    result: list[dict[str, t.Any]]
+
+
+@app.get("/api/v1/docs/check")
+@app.post("/api/v1/docs/check")
+def check_documentation(
+    response: Response,
+    model_name: str | None = Query(None, description="Name of specific model to check"),
+    runner: DbtProject = Depends(_get_runner),
+) -> DocumentationCheckResult | ServerErrorContainer:
+    """Check documentation completeness for models."""
+    try:
+        report = runner.check_documentation(model_name=model_name)
+        return DocumentationCheckResult(result=report.to_dict())
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.get("/api/v1/docs/report")
+def get_documentation_report(
+    response: Response,
+    model_name: str | None = Query(None, description="Filter report by model name"),
+    runner: DbtProject = Depends(_get_runner),
+) -> DocumentationCheckResult | ServerErrorContainer:
+    """Generate and return a documentation coverage report."""
+    try:
+        report = runner.check_documentation(model_name=model_name)
+        return DocumentationCheckResult(result=report.to_dict())
+    except Exception as e:
+        response.status_code = 500
+        return ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
+                message=str(e),
+                data=getattr(e, "__dict__", {}),
+            )
+        )
+
+
+@app.get("/api/v1/docs/gaps")
+def get_documentation_gaps(
+    response: Response,
+    severity: GapSeverity | None = Query(None, description="Filter by gap severity"),
+    gap_type: GapType | None = Query(None, description="Filter by gap type"),
+    model_name: str | None = Query(None, description="Filter gaps by model name"),
+    runner: DbtProject = Depends(_get_runner),
+) -> DocumentationGapsResult | ServerErrorContainer:
+    """Get documentation gaps with optional filters."""
+    try:
+        report = runner.check_documentation()
+        gaps = report.all_gaps
+
+        if severity:
+            gaps = [g for g in gaps if g.severity == severity]
+        if gap_type:
+            gaps = [g for g in gaps if g.gap_type == gap_type]
+        if model_name:
+            gaps = [g for g in gaps if g.model_name == model_name]
+
+        return DocumentationGapsResult(result=[gap.to_dict() for gap in gaps])
     except Exception as e:
         response.status_code = 500
         return ServerErrorContainer(

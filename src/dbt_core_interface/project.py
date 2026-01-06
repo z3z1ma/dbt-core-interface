@@ -300,6 +300,8 @@ class DbtProject:
 
         self._quality_monitor: t.Any | None = None
 
+        self._doc_checker: t.Any | None = None
+
         if load:
             self.parse_project(write_manifest=True)
 
@@ -1476,3 +1478,42 @@ class DbtProject:
             )
 
         return sources
+
+    @property
+    def doc_checker(self) -> t.Any:
+        """Get the DocumentationChecker instance for this project."""
+        if self._doc_checker is None:
+            from dbt_core_interface.doc_checker import DocumentationChecker
+
+            self._doc_checker = DocumentationChecker()
+        return self._doc_checker
+
+    def check_documentation(
+        self,
+        model_name: str | None = None,
+        model_path: Path | str | None = None,
+    ) -> t.Any:
+        """Check documentation completeness for a model or all models.
+
+        Args:
+            model_name: Name of specific model to check (None for all models)
+            model_path: Path to model file (alternative to model_name)
+
+        Returns:
+            DocumentationReport with coverage analysis
+
+        """
+        from dbt_core_interface.doc_checker import DocumentationReport
+
+        if model_name:
+            node = self.ref(model_name)
+            if not node:
+                raise ValueError(f"Model '{model_name}' not found in project")
+            return self.doc_checker.check_project(self.manifest, self.project_name, model_name_filter=model_name)
+        elif model_path:
+            node = self.get_node_by_path(model_path)
+            if not node:
+                raise ValueError(f"Model not found at path: {model_path}")
+            return self.doc_checker.check_project(self.manifest, self.project_name, model_name_filter=node.name)
+        else:
+            return self.doc_checker.check_project(self.manifest, self.project_name)
