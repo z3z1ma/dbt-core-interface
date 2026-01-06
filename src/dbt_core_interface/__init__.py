@@ -15,6 +15,13 @@ from dbt_core_interface.doc_checker import (  # noqa: F401
     GapType,
     ModelDocumentationStatus,
 )
+from dbt_core_interface.dependency_graph import (  # noqa: F401
+    DependencyGraph,
+    GraphDirection,
+    GraphEdge,
+    GraphFormat,
+    GraphNode,
+)
 from dbt_core_interface.project import *  # noqa: F401, F403
 from dbt_core_interface.quality import *  # noqa: F401, F403
 from dbt_core_interface.source_generator import (  # noqa: F401
