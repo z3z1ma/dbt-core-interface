@@ -61,7 +61,6 @@ from dbt_common.events.event_manager_client import add_logger_to_manager
 from dbt_common.events.logger import LoggerConfig
 
 from dbt_core_interface.test_suggester import (
-    DEFAULT_PATTERNS,
     ProjectTestPatterns,
     TestSuggester,
 )
@@ -1124,6 +1123,7 @@ class DbtProject:
 
         Returns:
             TestSuggester instance
+
         """
         if self._test_suggester is None:
             self._test_patterns = ProjectTestPatterns()
@@ -1150,6 +1150,7 @@ class DbtProject:
 
         Returns:
             List of test suggestions as dictionaries
+
         """
         suggester = self.get_test_suggester(learn=learn)
         results: list[dict[str, t.Any]] = []
@@ -1233,6 +1234,7 @@ class DbtProject:
 
         Returns:
             YAML string with test definitions
+
         """
         suggester = self.get_test_suggester(learn=learn)
 

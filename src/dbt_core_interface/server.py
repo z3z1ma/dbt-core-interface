@@ -40,7 +40,6 @@ from dbt_core_interface.project import (
 )
 from dbt_core_interface.quality import (
     AlertChannel,
-    CheckStatus,
     ConsoleAlertChannel,
     CustomSqlCheck,
     DuplicateCheck,
@@ -48,7 +47,6 @@ from dbt_core_interface.quality import (
     NullPercentageCheck,
     QualityCheck,
     QualityCheckType,
-    QualityMonitor,
     RowCountCheck,
     Severity,
     ValueRangeCheck,

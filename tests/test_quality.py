@@ -161,7 +161,6 @@ def test_quality_monitor_initialization() -> None:
     """Test QualityMonitor can be created (but requires real DbtProject for full testing)."""
     # Note: Full testing requires a real DbtProject instance
     # This test verifies the import and basic type structure
-    from dbt_core_interface.project import DbtProject
 
     # Verify the QualityMonitor class exists and has expected attributes
     assert QualityMonitor is not None
