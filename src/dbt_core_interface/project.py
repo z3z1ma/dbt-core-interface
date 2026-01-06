@@ -302,6 +302,8 @@ class DbtProject:
 
         self._doc_checker: t.Any | None = None
 
+        self._performance_profiler: t.Any | None = None
+
         if load:
             self.parse_project(write_manifest=True)
 
@@ -328,6 +330,9 @@ class DbtProject:
 
                 if instance._quality_monitor:
                     instance._quality_monitor.close()
+
+                if instance._performance_profiler:
+                    instance._performance_profiler.close()
 
                 del CONTAINER[instance.project_root]
 
@@ -1143,6 +1148,20 @@ class DbtProject:
         """Use for pickling the DbtProject instance."""
         config = self.to_config()
         return (self.__class__.from_config, (config,))
+    @property
+    def performance_profiler(self) -> t.Any:
+        """Get the PerformanceProfiler instance for this project."""
+        if self._performance_profiler is None:
+            from dbt_core_interface.performance_profiler import PerformanceProfiler
+
+            profiler_path = self.target_path / "performance.db"
+            self._performance_profiler = PerformanceProfiler(
+                storage_path=profiler_path,
+                slow_threshold_ms=5000.0,
+                history_days=30,
+            )
+        return self._performance_profiler
+
     _test_suggester: TestSuggester | None = None
     _test_patterns: ProjectTestPatterns | None = None
 
