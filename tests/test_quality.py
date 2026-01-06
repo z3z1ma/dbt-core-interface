@@ -2,16 +2,20 @@
 # pyright: reportDeprecated=false,reportPrivateImportUsage=false,reportAny=false,reportUnknownMemberType=false,reportUnknownVariableType=false
 """Tests for the quality monitoring module."""
 
+from unittest.mock import MagicMock, patch
 import pytest
 
 from dbt_core_interface.quality import (
+    AlertChannel,
     CheckStatus,
     ConsoleAlertChannel,
     CustomSqlCheck,
     DuplicateCheck,
     LogAlertChannel,
     NullPercentageCheck,
+    QualityAlert,
     QualityCheckResult,
+    QualityCheckType,
     QualityMonitor,
     RowCountCheck,
     Severity,
@@ -230,3 +234,154 @@ def test_quality_check_severity_default() -> None:
     """Test that quality checks default to WARNING severity."""
     check = RowCountCheck(name="test", min_rows=1)
     assert check.severity == Severity.WARNING
+
+
+def test_quality_alert_creation() -> None:
+    """Test QualityAlert creation."""
+    result = QualityCheckResult(
+        check_name="test_alert",
+        check_type=QualityCheckType.ROW_COUNT,
+        status=CheckStatus.FAILED,
+        severity=Severity.ERROR,
+        message="Test failed",
+    )
+
+    alert = QualityAlert(
+        check_result=result,
+    )
+
+    assert alert.check_result is result
+
+
+def test_quality_check_type_enum() -> None:
+    """Test QualityCheckType enum values."""
+    assert QualityCheckType.ROW_COUNT.value == "row_count"
+    assert QualityCheckType.NULL_PERCENTAGE.value == "null_percentage"
+    assert QualityCheckType.DUPLICATE.value == "duplicate"
+    assert QualityCheckType.VALUE_RANGE.value == "value_range"
+    assert QualityCheckType.CUSTOM_SQL.value == "custom_sql"
+
+
+def test_webhook_alert_channel_with_verify_ssl() -> None:
+    """Test WebhookAlertChannel with verify_ssl option."""
+    channel = WebhookAlertChannel(
+        url="https://example.com/webhook",
+        verify_ssl=False,
+    )
+    assert channel.verify_ssl is False
+
+
+def test_value_range_check_only_min() -> None:
+    """Test ValueRangeCheck with only minimum value."""
+    check = ValueRangeCheck(
+        name="min_only",
+        column_name="temperature",
+        min_value=-273.15,
+    )
+    assert check.min_value == -273.15
+    assert check.max_value is None
+
+
+def test_value_range_check_only_max() -> None:
+    """Test ValueRangeCheck with only maximum value."""
+    check = ValueRangeCheck(
+        name="max_only",
+        column_name="score",
+        max_value=100.0,
+    )
+    assert check.min_value is None
+    assert check.max_value == 100.0
+
+
+def test_row_count_check_both_bounds() -> None:
+    """Test RowCountCheck with both min and max bounds."""
+    check = RowCountCheck(
+        name="bounded",
+        min_rows=10,
+        max_rows=1000,
+    )
+    assert check.min_rows == 10
+    assert check.max_rows == 1000
+
+
+def test_duplicate_check_default_columns() -> None:
+    """Test DuplicateCheck default columns list is empty."""
+    check = DuplicateCheck(name="no_columns")
+    assert check.columns == []
+
+
+def test_null_percentage_check_default_threshold() -> None:
+    """Test NullPercentageCheck default max threshold."""
+    check = NullPercentageCheck(
+        name="nulls",
+        column_name="id",
+    )
+    assert check.max_null_percentage == 0.0
+
+
+def test_custom_sql_check_default_expect_true() -> None:
+    """Test CustomSqlCheck defaults to expect_true=True."""
+    check = CustomSqlCheck(
+        name="custom",
+        sql_template="SELECT 1",
+    )
+    assert check.expect_true is True
+
+
+def test_quality_check_result_with_all_fields() -> None:
+    """Test QualityCheckResult with all optional fields."""
+    result = QualityCheckResult(
+        check_name="comprehensive",
+        check_type=QualityCheckType.CUSTOM_SQL,
+        status=CheckStatus.PASSED,
+        severity=Severity.INFO,
+        message="All good",
+        actual_value=42,
+        expected_value=50,
+        threshold=5,
+        sql_executed="SELECT 42",
+        execution_time_ms=123.45,
+    )
+
+    assert result.actual_value == 42
+    assert result.execution_time_ms == 123.45
+    assert result.sql_executed == "SELECT 42"
+
+
+def test_webhook_alert_channel_default_timeout() -> None:
+    """Test WebhookAlertChannel default timeout."""
+    channel = WebhookAlertChannel(url="https://example.com/webhook")
+    assert channel.timeout == 5.0
+
+
+def test_webhook_alert_channel_default_headers() -> None:
+    """Test WebhookAlertChannel default headers."""
+    channel = WebhookAlertChannel(url="https://example.com/webhook")
+    assert channel.headers == {"Content-Type": "application/json"}
+
+
+def test_quality_check_disabled() -> None:
+    """Test creating a disabled quality check."""
+    check = RowCountCheck(
+        name="disabled_check",
+        min_rows=1,
+        enabled=False,
+    )
+    assert check.enabled is False
+
+
+def test_severity_comparison() -> None:
+    """Test Severity enum can be compared."""
+    assert Severity.INFO == "info"
+    assert Severity.WARNING == "warning"
+    assert Severity.ERROR == "error"
+    assert Severity.CRITICAL == "critical"
+
+
+def test_check_status_comparison() -> None:
+    """Test CheckStatus enum can be compared."""
+    assert CheckStatus.PASSED == "passed"
+    assert CheckStatus.FAILED == "failed"
+    assert CheckStatus.ERROR == "error"
+    assert CheckStatus.SKIPPED == "skipped"
+
