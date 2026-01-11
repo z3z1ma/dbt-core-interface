@@ -348,6 +348,18 @@ class DbtProject:
 
     @classmethod
     def setup_logging(cls, level: int = logging.DEBUG) -> logging.Logger:
+        """Set up logging for dbt-core-interface.
+
+        This should be called explicitly by user or application, not at import time,
+        to avoid side effects when the module is imported by dbt-core's plugin scanner.
+
+        Args:
+            level: The logging level to use. Defaults to DEBUG.
+
+        Returns:
+            The configured logger instance.
+
+        """
         logger = logging.getLogger(__name__)
         logger.setLevel(level)
 
@@ -1369,11 +1381,12 @@ class DbtProject:
 
         Returns:
             YAML string with source definitions.
+
         """
         from dbt_core_interface.source_generator import (
             SourceGenerationOptions,
-            SourceGenerator,
             SourceGenerationStrategy,
+            SourceGenerator,
             to_yaml,
         )
 
@@ -1426,6 +1439,7 @@ class DbtProject:
                 - model_sql: Generated SQL model
                 - schema_yml: Generated YAML schema
                 - column_mappings: List of column mappings
+
         """
         from dbt_core_interface.staging_generator import (
             NamingConvention,
@@ -1491,6 +1505,7 @@ class DbtProject:
 
         Returns:
             Dictionary with generated model information, or None if source not found
+
         """
         results = self.generate_staging_models(
             source_name=source_name,
@@ -1513,6 +1528,7 @@ class DbtProject:
 
         Returns:
             List of source information dictionaries
+
         """
         sources: list[dict[str, t.Any]] = []
         for node in self.manifest.sources.values():
@@ -1572,8 +1588,6 @@ class DbtProject:
             DocumentationReport with coverage analysis
 
         """
-        from dbt_core_interface.doc_checker import DocumentationReport
-
         if model_name:
             node = self.ref(model_name)
             if not node:
@@ -1627,6 +1641,7 @@ class DbtProject:
             ...     direction="TB"
             ... )
             >>> graph.render_png("lineage.png")
+
         """
         from dbt_core_interface.dependency_graph import (
             DependencyGraph,
@@ -1663,10 +1678,3 @@ class DbtProject:
                 graph = graph.filter_by_depth(model_id, depth=depth, direction="both")
 
         return graph
-
-    def __reduce__(  # pyright: ignore[reportImplicitOverride]
-        self,
-    ) -> tuple[t.Callable[[DbtConfiguration], DbtProject], tuple[DbtConfiguration]]:
-        """Use for pickling the DbtProject instance."""
-        config = self.to_config()
-        return (self.__class__.from_config, (config,))

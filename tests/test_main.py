@@ -22,8 +22,6 @@ def test_logging_not_configured_at_import() -> None:
     should not cause side effects like setting DEBUG log level or
     adding RichHandler to dbt's logger.
     """
-    from dbt_core_interface import project
-
     logger = logging.getLogger("dbt_core_interface.project")
 
     assert logger.level == 0 or logger.level == logging.NOTSET, (
