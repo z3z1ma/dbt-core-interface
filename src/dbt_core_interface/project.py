@@ -66,22 +66,25 @@ if t.TYPE_CHECKING:
     from sqlfluff.core.linter.linted_dir import LintingRecord
 
 
-disable_tracking()
-
-
 def _set_invocation_context() -> None:
     set_invocation_context(get_env())
 
 
-_set_invocation_context()
+def _setup_logging(level: int = logging.DEBUG) -> logging.Logger:
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+
+    if not any(isinstance(h, rich.logging.RichHandler) for h in logger.handlers):
+        logger.addHandler(rich.logging.RichHandler())
+
+    add_logger_to_manager(
+        LoggerConfig(name=__name__, logger=logger),
+    )
+
+    return logger
+
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(rich.logging.RichHandler())
-
-add_logger_to_manager(
-    LoggerConfig(name=__name__, logger=logger),
-)
 
 __all__ = ["DbtProject", "DbtConfiguration"]
 
@@ -253,6 +256,9 @@ class DbtProject:
         if hasattr(self, "_args"):
             return
 
+        disable_tracking()
+        _set_invocation_context()
+
         project_dir = project_dir or _get_profiles_dir()
         profiles_dir = profiles_dir or _get_profiles_dir(project_dir)
 
@@ -320,6 +326,20 @@ class DbtProject:
         return f"DbtProject(name={self.project_name}, root={self.project_root}, last_parsed_at={self._last_parsed_at})"
 
     set_invocation_context = staticmethod(_set_invocation_context)
+
+    @classmethod
+    def setup_logging(cls, level: int = logging.DEBUG) -> logging.Logger:
+        logger = logging.getLogger(__name__)
+        logger.setLevel(level)
+
+        if not any(isinstance(h, rich.logging.RichHandler) for h in logger.handlers):
+            logger.addHandler(rich.logging.RichHandler())
+
+        add_logger_to_manager(
+            LoggerConfig(name=__name__, logger=logger),
+        )
+
+        return logger
 
     @classmethod
     def from_config(cls, config: DbtConfiguration) -> DbtProject:
