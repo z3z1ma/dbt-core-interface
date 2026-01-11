@@ -170,9 +170,7 @@ class SourceGenerator:
         )
         return [source_def]
 
-    def _generate_for_all_schemas(
-        self, options: SourceGenerationOptions
-    ) -> list[SourceDefinition]:
+    def _generate_for_all_schemas(self, options: SourceGenerationOptions) -> list[SourceDefinition]:
         """Generate sources for all accessible schemas."""
         schemas = self._get_schemas(options)
 
@@ -231,7 +229,7 @@ class SourceGenerator:
         sql = f"""
             SELECT schema_name
             FROM `{project_id}.INFORMATION_SCHEMA.SCHEMATA`
-            WHERE schema_name NOT IN ({','.join(f"'{s}'" for s in options.exclude_schemas)})
+            WHERE schema_name NOT IN ({",".join(f"'{s}'" for s in options.exclude_schemas)})
             ORDER BY schema_name
         """
         result = self.project.execute_sql(sql)
@@ -244,7 +242,7 @@ class SourceGenerator:
         sql = f"""
             SELECT schema_name
             FROM {database}.INFORMATION_SCHEMA.SCHEMATA
-            WHERE schema_name NOT IN ({','.join(f"'{s}'" for s in options.exclude_schemas)})
+            WHERE schema_name NOT IN ({",".join(f"'{s}'" for s in options.exclude_schemas)})
             ORDER BY schema_name
         """
         result = self.project.execute_sql(sql)
@@ -314,8 +312,7 @@ class SourceGenerator:
 
         # Filter excluded tables
         table_names = [
-            t for t in table_names
-            if t not in options.exclude_tables and not t.startswith("_")
+            t for t in table_names if t not in options.exclude_tables and not t.startswith("_")
         ]
 
         tables = []
@@ -404,7 +401,9 @@ class SourceGenerator:
                 schema=schema,
                 database=database,
                 columns=columns,
-                description=self._infer_table_description(table_name, columns) if options.infer_descriptions else "",
+                description=self._infer_table_description(table_name, columns)
+                if options.infer_descriptions
+                else "",
             )
         except Exception as e:
             logger.error(f"Error introspecting {schema}.{table_name}: {e}")
@@ -492,7 +491,7 @@ class SourceGenerator:
         clean_name = table_name
         for prefix in ["tbl_", "t_", "dim_", "fct_", "stg_", "raw_"]:
             if clean_name.startswith(prefix):
-                clean_name = clean_name[len(prefix):]
+                clean_name = clean_name[len(prefix) :]
                 break
 
         # Convert snake_case to Title Case
@@ -523,10 +522,18 @@ class SourceGenerator:
         if column_name == "id" or column_name.endswith("_id"):
             tags.append("primary_key" if column_name == "id" else "foreign_key")
 
-        if column_name.endswith("_at") or column_name.endswith("_date") or column_name.endswith("_time"):
+        if (
+            column_name.endswith("_at")
+            or column_name.endswith("_date")
+            or column_name.endswith("_time")
+        ):
             tags.append("timestamp")
 
-        if column_name.startswith("is_") or column_name.startswith("has_") or column_name.startswith("can_"):
+        if (
+            column_name.startswith("is_")
+            or column_name.startswith("has_")
+            or column_name.startswith("can_")
+        ):
             tags.append("boolean")
 
         return tags
@@ -545,7 +552,7 @@ def to_yaml(source_defs: list[SourceDefinition], quote_identifiers: bool = False
     lines = []
 
     for source_def in source_defs:
-        quote = '"' if quote_identifiers else ''
+        quote = '"' if quote_identifiers else ""
 
         lines.append(f"version: 2")
         lines.append(f"")
@@ -553,7 +560,7 @@ def to_yaml(source_defs: list[SourceDefinition], quote_identifiers: bool = False
         lines.append(f"  - name: {source_def.source_name}")
 
         if source_def.description:
-            lines.append(f"    description: \"{source_def.description}\"")
+            lines.append(f'    description: "{source_def.description}"')
 
         lines.append(f"    {quote}database{quote}: {quote}{source_def.database}{quote}")
         lines.append(f"    {quote}schema{quote}: {quote}{source_def.schema}{quote}")
@@ -574,7 +581,7 @@ def to_yaml(source_defs: list[SourceDefinition], quote_identifiers: bool = False
             lines.append(f"      - name: {quote}{table.name}{quote}")
 
             if table.description:
-                lines.append(f"        description: \"{table.description}\"")
+                lines.append(f'        description: "{table.description}"')
 
             if table.tags:
                 lines.append(f"        tags:")
@@ -592,7 +599,7 @@ def to_yaml(source_defs: list[SourceDefinition], quote_identifiers: bool = False
                 lines.append(f"          - name: {quote}{column.name}{quote}")
 
                 if column.description:
-                    lines.append(f"            description: \"{column.description}\"")
+                    lines.append(f'            description: "{column.description}"')
 
                 lines.append(f"            data_type: {column.data_type}")
 

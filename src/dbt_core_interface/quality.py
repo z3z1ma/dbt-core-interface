@@ -28,6 +28,7 @@ def _raise_required(field_name: str) -> t.NoReturn:
     """Raise an error for required fields in dataclass inheritance."""
     raise TypeError(f"__init__ missing required argument: '{field_name}'")
 
+
 __all__ = [
     "QualityCheck",
     "QualityCheckType",
@@ -280,9 +281,7 @@ class QualityCheck(ABC):
         """Get the SQL for this check. Override in subclasses."""
         return ""
 
-    def _execute_query(
-        self, project: DbtProject, sql: str, model_name: str
-    ) -> tuple[t.Any, float]:
+    def _execute_query(self, project: DbtProject, sql: str, model_name: str) -> tuple[t.Any, float]:
         """Execute a query and return the result with execution time."""
         import time
 

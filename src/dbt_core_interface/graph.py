@@ -69,7 +69,9 @@ class DependencyGraph:
             frontier = next_frontier
         return visited
 
-    def get_lineage(self, node_id: str, upstream_depth: int = 3, downstream_depth: int = 3) -> dict[str, t.Any]:
+    def get_lineage(
+        self, node_id: str, upstream_depth: int = 3, downstream_depth: int = 3
+    ) -> dict[str, t.Any]:
         """Get the complete lineage for a node."""
         upstream = self.get_upstream(node_id, upstream_depth)
         downstream = self.get_downstream(node_id, downstream_depth)
@@ -208,7 +210,7 @@ def generate_dot_graph(
 
     # Build DOT graph
     lines = ["digraph dbt_dependency_graph {"]
-    lines.append('  rankdir=LR;')
+    lines.append("  rankdir=LR;")
     lines.append('  node [fontname="Arial", fontsize=10];')
     lines.append('  edge [fontname="Arial", fontsize=9];')
 
@@ -224,9 +226,13 @@ def generate_dot_graph(
 
         # Highlight focus node
         if node_id == focus_node:
-            lines.append(f'  "{node_id}" [label="{label}", fillcolor="{color}", style="filled", penwidth=2.0];')
+            lines.append(
+                f'  "{node_id}" [label="{label}", fillcolor="{color}", style="filled", penwidth=2.0];'
+            )
         else:
-            lines.append(f'  "{node_id}" [label="{label}", fillcolor="{color}", style="filled,filled", tooltip="{tooltip}"];')
+            lines.append(
+                f'  "{node_id}" [label="{label}", fillcolor="{color}", style="filled,filled", tooltip="{tooltip}"];'
+            )
 
     # Add edges
     for src, dst in graph.edges:
@@ -255,15 +261,14 @@ def generate_svg_from_dot(dot_graph: str) -> str:
         import graphviz  # pyright: ignore[reportMissingImports]
     except ImportError as e:
         raise ImportError(
-            "graphviz package is required for SVG generation. "
-            "Install it with: pip install graphviz"
+            "graphviz package is required for SVG generation. Install it with: pip install graphviz"
         ) from e
 
     try:
         src = graphviz.Source(dot_graph)
         svg = src.pipe(format="svg").decode("utf-8")
         # Extract just the SVG content from the full XML output
-        if '<?xml' in svg:
+        if "<?xml" in svg:
             start = svg.find("<svg")
             end = svg.find("</svg>") + 6
             if start != -1 and end > start:
@@ -294,7 +299,10 @@ def export_graph(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     dot_graph = generate_dot_graph(
-        graph, focus_node=focus_node, upstream_depth=upstream_depth, downstream_depth=downstream_depth
+        graph,
+        focus_node=focus_node,
+        upstream_depth=upstream_depth,
+        downstream_depth=downstream_depth,
     )
 
     ext = output_path.suffix.lower()
@@ -374,11 +382,13 @@ def list_models(manifest: Manifest, resource_type: str | None = None) -> list[di
     for node_id, node in manifest.nodes.items():
         if resource_type and node.resource_type != resource_type:
             continue
-        results.append({
-            "unique_id": node_id,
-            "name": node.name,
-            "resource_type": node.resource_type,
-            "package_name": node.package_name,
-            "file_path": node.original_file_path,
-        })
+        results.append(
+            {
+                "unique_id": node_id,
+                "name": node.name,
+                "resource_type": node.resource_type,
+                "package_name": node.package_name,
+                "file_path": node.original_file_path,
+            }
+        )
     return results

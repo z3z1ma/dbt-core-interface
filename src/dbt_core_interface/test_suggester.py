@@ -294,9 +294,7 @@ class TestSuggester:
         # Heuristic: more than 20% of columns are foreign key IDs
         return total_count > 0 and (fk_id_count / total_count) > 0.2
 
-    def generate_test_yml(
-        self, model: ManifestNode, manifest: t.Any | None = None
-    ) -> str:
+    def generate_test_yml(self, model: ManifestNode, manifest: t.Any | None = None) -> str:
         """Generate YAML schema file with suggested tests.
 
         Args:

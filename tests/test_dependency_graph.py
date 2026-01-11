@@ -79,9 +79,9 @@ class TestGraphEdge:
         """Test converting edge to DOT format."""
         edge = GraphEdge(source="model.test.a", target="model.test.b")
         dot = edge.to_dot()
-        assert 'model.test.a' in dot
-        assert 'model.test.b' in dot
-        assert '->' in dot
+        assert "model.test.a" in dot
+        assert "model.test.b" in dot
+        assert "->" in dot
 
     def test_edge_with_quotes_in_id(self) -> None:
         """Test edge escaping for IDs with quotes."""
@@ -295,9 +295,7 @@ class TestDependencyGraph:
         graph.add_edge(GraphEdge(source="model.test.c", target="model.test.d"))
 
         # Filter to depth 1 from b, downstream only
-        filtered = graph.filter_by_depth(
-            "model.test.b", depth=1, direction="downstream"
-        )
+        filtered = graph.filter_by_depth("model.test.b", depth=1, direction="downstream")
 
         # Should include b and c only
         assert "model.test.b" in filtered.nodes

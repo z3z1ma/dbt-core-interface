@@ -148,7 +148,9 @@ class TestStagingGenerator:
         assert user_id_mapping["staging_name"] == "custom_id"
 
         # Check default naming is used for other columns
-        user_name_mapping = [m for m in result["column_mappings"] if m["source_name"] == "UserName"][0]
+        user_name_mapping = [
+            m for m in result["column_mappings"] if m["source_name"] == "UserName"
+        ][0]
         assert user_name_mapping["staging_name"] == "user_name"
 
     def test_generate_from_source(self) -> None:

@@ -116,7 +116,10 @@ class TestDbtProjectContainerAddProject:
 
         # The first project should become the default
         # (unless the fixture clears it again)
-        assert container._projects.get(project.project_root) is project or len(container._projects) >= 0
+        assert (
+            container._projects.get(project.project_root) is project
+            or len(container._projects) >= 0
+        )
 
 
 class TestDbtProjectContainerDropProject:

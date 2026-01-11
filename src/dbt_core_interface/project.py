@@ -1189,6 +1189,7 @@ class DbtProject:
         """Use for pickling the DbtProject instance."""
         config = self.to_config()
         return (self.__class__.from_config, (config,))
+
     @property
     def performance_profiler(self) -> t.Any:
         """Get the PerformanceProfiler instance for this project."""
@@ -1383,7 +1384,9 @@ class DbtProject:
             "specific_tables": SourceGenerationStrategy.SPECIFIC_TABLES,
         }
         if strategy not in strategy_map:
-            raise ValueError(f"Invalid strategy: {strategy}. Must be one of {list(strategy_map.keys())}")
+            raise ValueError(
+                f"Invalid strategy: {strategy}. Must be one of {list(strategy_map.keys())}"
+            )
 
         options = SourceGenerationOptions(
             strategy=strategy_map[strategy],
@@ -1523,8 +1526,12 @@ class DbtProject:
                     columns.append(
                         {
                             "name": col_name,
-                            "data_type": col_info.get("data_type") if isinstance(col_info, dict) else None,
-                            "description": col_info.get("description", "") if isinstance(col_info, dict) else "",
+                            "data_type": col_info.get("data_type")
+                            if isinstance(col_info, dict)
+                            else None,
+                            "description": col_info.get("description", "")
+                            if isinstance(col_info, dict)
+                            else "",
                         }
                     )
 
@@ -1571,12 +1578,16 @@ class DbtProject:
             node = self.ref(model_name)
             if not node:
                 raise ValueError(f"Model '{model_name}' not found in project")
-            return self.doc_checker.check_project(self.manifest, self.project_name, model_name_filter=model_name)
+            return self.doc_checker.check_project(
+                self.manifest, self.project_name, model_name_filter=model_name
+            )
         elif model_path:
             node = self.get_node_by_path(model_path)
             if not node:
                 raise ValueError(f"Model not found at path: {model_path}")
-            return self.doc_checker.check_project(self.manifest, self.project_name, model_name_filter=node.name)
+            return self.doc_checker.check_project(
+                self.manifest, self.project_name, model_name_filter=node.name
+            )
         else:
             return self.doc_checker.check_project(self.manifest, self.project_name)
 
@@ -1652,6 +1663,7 @@ class DbtProject:
                 graph = graph.filter_by_depth(model_id, depth=depth, direction="both")
 
         return graph
+
     def __reduce__(  # pyright: ignore[reportImplicitOverride]
         self,
     ) -> tuple[t.Callable[[DbtConfiguration], DbtProject], tuple[DbtConfiguration]]:

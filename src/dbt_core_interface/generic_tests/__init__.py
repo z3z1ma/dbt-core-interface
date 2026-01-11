@@ -284,9 +284,7 @@ class GenericTestLibrary:
                     WHERE {{ column_name }} < DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL {{ interval }})
                 """,
                 required_args=["column_name"],
-                optional_args={
-                    "interval": "Time window for recency check (default: '24 hour')"
-                },
+                optional_args={"interval": "Time window for recency check (default: '24 hour')"},
                 examples=[
                     {
                         "description": "Ensure orders have been updated within 24 hours",
@@ -384,7 +382,11 @@ class GenericTestLibrary:
         col_lower = column_name.lower()
 
         # Primary key patterns
-        if col_lower in ("id", "uuid", "guid", "pk") or col_lower.endswith("_id") and col_lower != "id":
+        if (
+            col_lower in ("id", "uuid", "guid", "pk")
+            or col_lower.endswith("_id")
+            and col_lower != "id"
+        ):
             if col_lower in ("id", "uuid", "guid") or col_lower.endswith("_pk"):
                 suggestions.append(
                     GenericTestConfig(
@@ -445,9 +447,7 @@ class GenericTestLibrary:
 
         return suggestions
 
-    def generate_schema_yml(
-        self, model_name: str, columns: dict[str, dict[str, t.Any]]
-    ) -> str:
+    def generate_schema_yml(self, model_name: str, columns: dict[str, dict[str, t.Any]]) -> str:
         """Generate a schema.yml file with suggested tests for a model.
 
         Args:

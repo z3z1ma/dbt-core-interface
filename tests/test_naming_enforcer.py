@@ -91,10 +91,15 @@ def test_naming_convention_get_layer_from_path() -> None:
     convention = NamingConvention.default()
 
     assert convention.get_layer_from_path("models/staging/stg_customers.sql") == ModelLayer.STAGING
-    assert convention.get_layer_from_path("models/intermediate/int_orders.sql") == ModelLayer.INTERMEDIATE
+    assert (
+        convention.get_layer_from_path("models/intermediate/int_orders.sql")
+        == ModelLayer.INTERMEDIATE
+    )
     assert convention.get_layer_from_path("models/marts/mart_customer.sql") == ModelLayer.MART
     assert convention.get_layer_from_path("models/facts/fct_orders.sql") == ModelLayer.FACT
-    assert convention.get_layer_from_path("models/dimensions/dim_customer.sql") == ModelLayer.DIMENSION
+    assert (
+        convention.get_layer_from_path("models/dimensions/dim_customer.sql") == ModelLayer.DIMENSION
+    )
     assert convention.get_layer_from_path("models/seeds/seed_raw.csv") == ModelLayer.SEED
     assert convention.get_layer_from_path("models/raw/raw_customers.sql") == ModelLayer.RAW
     assert convention.get_layer_from_path("models/other/misc.sql") == ModelLayer.OTHER
@@ -105,7 +110,10 @@ def test_naming_convention_case_insensitive_paths() -> None:
     convention = NamingConvention.default()
 
     assert convention.get_layer_from_path("models/Staging/stg_customers.sql") == ModelLayer.STAGING
-    assert convention.get_layer_from_path("models/INTERMEDIATE/int_orders.sql") == ModelLayer.INTERMEDIATE
+    assert (
+        convention.get_layer_from_path("models/INTERMEDIATE/int_orders.sql")
+        == ModelLayer.INTERMEDIATE
+    )
 
 
 def test_model_layer_enum() -> None:
@@ -162,7 +170,9 @@ def test_naming_convention_custom() -> None:
     """Test creating custom naming convention."""
     custom_patterns = {
         ModelLayer.STAGING: LayerPattern(layer=ModelLayer.STAGING, prefixes=("src_", "stg_")),
-        ModelLayer.INTERMEDIATE: LayerPattern(layer=ModelLayer.INTERMEDIATE, prefixes=("wrk_", "int_")),
+        ModelLayer.INTERMEDIATE: LayerPattern(
+            layer=ModelLayer.INTERMEDIATE, prefixes=("wrk_", "int_")
+        ),
     }
 
     convention = NamingConvention(

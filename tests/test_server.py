@@ -91,9 +91,7 @@ class TestServerError:
     def test_server_error_creation(self):
         """Test creating a ServerError."""
         error = ServerError(
-            code=ServerErrorCode.CompileSqlFailure,
-            message="Compilation failed",
-            data={"line": 10}
+            code=ServerErrorCode.CompileSqlFailure, message="Compilation failed", data={"line": 10}
         )
         assert error.code == ServerErrorCode.CompileSqlFailure
         assert error.message == "Compilation failed"
@@ -106,9 +104,7 @@ class TestServerErrorContainer:
     def test_server_error_container_creation(self):
         """Test creating a ServerErrorContainer."""
         error = ServerError(
-            code=ServerErrorCode.ExecuteSqlFailure,
-            message="Execution failed",
-            data={}
+            code=ServerErrorCode.ExecuteSqlFailure, message="Execution failed", data={}
         )
         container = ServerErrorContainer(error=error)
         assert container.error.code == ServerErrorCode.ExecuteSqlFailure
@@ -124,7 +120,7 @@ class TestServerResultModels:
             column_names=["id", "name"],
             rows=[[1, "Alice"], [2, "Bob"]],
             raw_code="select * from users",
-            executed_code="select id, name from public.users"
+            executed_code="select id, name from public.users",
         )
         assert result.column_names == ["id", "name"]
         assert len(result.rows) == 2
@@ -137,19 +133,13 @@ class TestServerResultModels:
 
     def test_server_register_result(self):
         """Test ServerRegisterResult model."""
-        result = ServerRegisterResult(
-            added="my_project",
-            projects=["/path/to/project"]
-        )
+        result = ServerRegisterResult(added="my_project", projects=["/path/to/project"])
         assert result.added == "my_project"
         assert len(result.projects) == 1
 
     def test_server_unregister_result(self):
         """Test ServerUnregisterResult model."""
-        result = ServerUnregisterResult(
-            removed="my_project",
-            projects=[]
-        )
+        result = ServerUnregisterResult(removed="my_project", projects=[])
         assert result.removed == "my_project"
         assert result.projects == []
 
@@ -188,8 +178,7 @@ class TestCreateErrorResponse:
     def test_create_error_response_basic(self):
         """Test creating a basic error response."""
         response = _create_error_response(
-            ServerErrorCode.CompileSqlFailure,
-            "SQL compilation failed"
+            ServerErrorCode.CompileSqlFailure, "SQL compilation failed"
         )
         assert isinstance(response, ServerErrorContainer)
         assert response.error.code == ServerErrorCode.CompileSqlFailure
@@ -199,17 +188,14 @@ class TestCreateErrorResponse:
         """Test creating an error response with additional data."""
         data = {"line": 42, "column": 10}
         response = _create_error_response(
-            ServerErrorCode.ExecuteSqlFailure,
-            "Query execution failed",
-            data
+            ServerErrorCode.ExecuteSqlFailure, "Query execution failed", data
         )
         assert response.error.data == data
 
     def test_create_error_response_empty_data(self):
         """Test creating an error response with no data defaults to empty dict."""
         response = _create_error_response(
-            ServerErrorCode.ProjectParseFailure,
-            "Failed to parse project"
+            ServerErrorCode.ProjectParseFailure, "Failed to parse project"
         )
         assert response.error.data == {}
 
@@ -301,7 +287,7 @@ class TestLoadSavedState:
                     "profiles_dir": None,
                     "target": "dev",
                     "threads": 4,
-                    "vars": {"key": "value"}
+                    "vars": {"key": "value"},
                 }
             ]
             state_path.write_text(json.dumps(state_data))
@@ -434,6 +420,7 @@ class TestLifespan:
     def test_lifespan_is_callable(self):
         """Test that lifespan is a callable context manager."""
         from dbt_core_interface.server import lifespan
+
         assert callable(lifespan)
 
 
@@ -445,9 +432,7 @@ class TestQualityCheckConfigModels:
         from dbt_core_interface.server import QualityCheckConfig
 
         config = QualityCheckConfig(
-            name="test_check",
-            check_type=QualityCheckType.ROW_COUNT,
-            model_name="my_model"
+            name="test_check", check_type=QualityCheckType.ROW_COUNT, model_name="my_model"
         )
         assert config.description == ""
         assert config.severity == Severity.WARNING
@@ -465,7 +450,7 @@ class TestQualityCheckConfigModels:
             description="Check for nulls",
             severity=Severity.ERROR,
             enabled=False,
-            config={"column_name": "id", "max_null_percentage": 0.1}
+            config={"column_name": "id", "max_null_percentage": 0.1},
         )
         assert config.description == "Check for nulls"
         assert config.severity == Severity.ERROR
@@ -488,8 +473,7 @@ class TestAlertChannelConfig:
         from dbt_core_interface.server import AlertChannelConfig
 
         config = AlertChannelConfig(
-            channel_type="webhook",
-            config={"url": "https://example.com", "timeout": 10}
+            channel_type="webhook", config={"url": "https://example.com", "timeout": 10}
         )
         assert config.config["url"] == "https://example.com"
         assert config.config["timeout"] == 10
@@ -506,29 +490,25 @@ class TestTestSuggestionModels:
             model="my_model",
             unique_id="model.project.my_model",
             path="models/my_model.sql",
-            suggestions=[
-                {"test": "unique", "column": "id"},
-                {"test": "not_null", "column": "id"}
-            ]
+            suggestions=[{"test": "unique", "column": "id"}, {"test": "not_null", "column": "id"}],
         )
         assert result.model == "my_model"
         assert len(result.suggestions) == 2
 
     def test_server_test_suggestion_result(self):
         """Test ServerTestSuggestionResult model."""
-        from dbt_core_interface.server import (
-            ServerTestSuggestionResult,
-            TestSuggestionResult
-        )
+        from dbt_core_interface.server import ServerTestSuggestionResult, TestSuggestionResult
 
-        result = ServerTestSuggestionResult(result=[
-            TestSuggestionResult(
-                model="my_model",
-                unique_id="model.project.my_model",
-                path="models/my_model.sql",
-                suggestions=[]
-            )
-        ])
+        result = ServerTestSuggestionResult(
+            result=[
+                TestSuggestionResult(
+                    model="my_model",
+                    unique_id="model.project.my_model",
+                    path="models/my_model.sql",
+                    suggestions=[],
+                )
+            ]
+        )
         assert len(result.result) == 1
 
     def test_server_test_yml_result(self):

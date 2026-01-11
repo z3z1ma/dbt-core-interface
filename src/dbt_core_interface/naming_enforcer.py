@@ -130,15 +130,11 @@ class NamingConvention:
                 ModelLayer.MART: LayerPattern(
                     layer=ModelLayer.MART, prefixes=("mart_",), required=True
                 ),
-                ModelLayer.SEED: LayerPattern(
-                    layer=ModelLayer.SEED, prefixes=(), required=False
-                ),
+                ModelLayer.SEED: LayerPattern(layer=ModelLayer.SEED, prefixes=(), required=False),
                 ModelLayer.RAW: LayerPattern(
                     layer=ModelLayer.RAW, prefixes=("raw_",), required=False
                 ),
-                ModelLayer.OTHER: LayerPattern(
-                    layer=ModelLayer.OTHER, prefixes=(), required=False
-                ),
+                ModelLayer.OTHER: LayerPattern(layer=ModelLayer.OTHER, prefixes=(), required=False),
             },
         )
 
@@ -320,7 +316,9 @@ class NamingEnforcer:
 
         return violations
 
-    def suggest_renames(self, violations: list[NamingViolation] | None = None) -> list[NamingSuggestion]:
+    def suggest_renames(
+        self, violations: list[NamingViolation] | None = None
+    ) -> list[NamingSuggestion]:
         """Generate rename suggestions for violations."""
         if violations is None:
             violations = self.check_all_models()
@@ -383,9 +381,7 @@ class NamingEnforcer:
         new_patterns = dict(self.convention.layer_patterns)
         new_patterns[layer] = pattern
 
-        self.convention = dataclasses.replace(
-            self.convention, layer_patterns=new_patterns
-        )
+        self.convention = dataclasses.replace(self.convention, layer_patterns=new_patterns)
 
     def get_violations_summary(
         self, violations: list[NamingViolation] | None = None

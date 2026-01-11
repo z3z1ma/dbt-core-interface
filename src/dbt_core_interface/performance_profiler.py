@@ -286,9 +286,7 @@ class PerformanceProfiler:
             if int(timestamp) % 3600 == 0:  # Every hour roughly
                 self._cleanup_old_metrics()
 
-        logger.debug(
-            f"Recorded performance metric: {model_name} - {execution_time_ms:.2f}ms"
-        )
+        logger.debug(f"Recorded performance metric: {model_name} - {execution_time_ms:.2f}ms")
         return metric
 
     def record_from_adapter_response(
@@ -315,16 +313,16 @@ class PerformanceProfiler:
         """
         # Extract timing from adapter response
         execution_time_ms = (
-            getattr(adapter_response, "_elapsed_time", None) or
-            getattr(adapter_response, "elapsed_time", None) or
-            0.0
+            getattr(adapter_response, "_elapsed_time", None)
+            or getattr(adapter_response, "elapsed_time", None)
+            or 0.0
         ) * 1000  # Convert to milliseconds
 
         # Try to get rows affected from response
         rows_affected = (
-            getattr(adapter_response, "rows_affected", None) or
-            getattr(adapter_response, "_rows_affected", None) or
-            0
+            getattr(adapter_response, "rows_affected", None)
+            or getattr(adapter_response, "_rows_affected", None)
+            or 0
         )
 
         return self.record_metric(

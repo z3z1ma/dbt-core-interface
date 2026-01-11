@@ -384,4 +384,3 @@ def test_check_status_comparison() -> None:
     assert CheckStatus.FAILED == "failed"
     assert CheckStatus.ERROR == "error"
     assert CheckStatus.SKIPPED == "skipped"
-

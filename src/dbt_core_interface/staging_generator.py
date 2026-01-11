@@ -142,9 +142,7 @@ ${column_tests}
         column_mappings = self._generate_column_mappings(columns)
 
         # Generate SELECT clause
-        select_columns = "\n".join(
-            cm.to_select_sql() for cm in column_mappings
-        )
+        select_columns = "\n".join(cm.to_select_sql() for cm in column_mappings)
         # Remove trailing comma from last column
         select_columns = select_columns.rstrip(",")
 
@@ -198,7 +196,9 @@ ${column_tests}
                 columns[col_name] = {
                     "name": col_name,
                     "data_type": col_info.get("data_type") if isinstance(col_info, dict) else None,
-                    "description": col_info.get("description", "") if isinstance(col_info, dict) else "",
+                    "description": col_info.get("description", "")
+                    if isinstance(col_info, dict)
+                    else "",
                     "tags": col_info.get("tags", []) if isinstance(col_info, dict) else [],
                     "meta": col_info.get("meta", {}) if isinstance(col_info, dict) else {},
                 }
@@ -243,7 +243,7 @@ ${column_tests}
         # Remove prefixes
         for prefix in self.config.remove_prefixes:
             if result.startswith(prefix):
-                result = result[len(prefix):]
+                result = result[len(prefix) :]
                 # Remove separator if present
                 if result.startswith(("_", "-", " ")):
                     result = result[1:]
@@ -363,7 +363,7 @@ ${column_tests}
 
             column_tests_lines.append(f"      - name: {cm.staging_name}")
             if self.config.generate_documentation and cm.description:
-                column_tests_lines.append(f"        description: \"{cm.description}\"")
+                column_tests_lines.append(f'        description: "{cm.description}"')
             column_tests_lines.append("        tests:")
             for test in tests:
                 column_tests_lines.append(f"          - {test}")

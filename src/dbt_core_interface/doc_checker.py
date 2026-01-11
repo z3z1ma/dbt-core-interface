@@ -227,7 +227,8 @@ class DocumentationReport:
 
             model_table.add_row("Path", status.model_path)
             model_table.add_row(
-                "Has description", "[green]Yes[/green]" if status.has_description else "[red]No[/red]"
+                "Has description",
+                "[green]Yes[/green]" if status.has_description else "[red]No[/red]",
             )
             if status.has_description:
                 model_table.add_row("Description length", str(status.description_length))
@@ -470,7 +471,9 @@ class DocumentationChecker:
         """Get all gaps of a specific type."""
         return [g for g in report.all_gaps if g.gap_type == gap_type]
 
-    def get_gaps_by_model(self, report: DocumentationReport, model_name: str) -> list[DocumentationGap]:
+    def get_gaps_by_model(
+        self, report: DocumentationReport, model_name: str
+    ) -> list[DocumentationGap]:
         """Get all gaps for a specific model."""
         return [g for g in report.all_gaps if g.model_name == model_name]
 

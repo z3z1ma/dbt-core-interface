@@ -223,8 +223,8 @@ class DependencyGraph:
         lines = [
             "digraph dbt_dependency_graph {",
             f"  rankdir={self.direction.value};",
-            f"  node [shape=box, style=rounded, fontname=\"Arial\", fontsize=10];",
-            f"  edge [fontname=\"Arial\", fontsize=9, color=\"#718096\"];",
+            f'  node [shape=box, style=rounded, fontname="Arial", fontsize=10];',
+            f'  edge [fontname="Arial", fontsize=9, color="#718096"];',
             "",
         ]
 
@@ -283,9 +283,7 @@ class DependencyGraph:
 
         # Write DOT to temporary file
         dot_content = self.to_dot()
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".dot", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".dot", delete=False) as tmp:
             tmp.write(dot_content)
             tmp_path = Path(tmp.name)
 
@@ -436,9 +434,7 @@ class DependencyGraph:
         """
         resource_counts: dict[str, int] = {}
         for node in self.nodes.values():
-            resource_counts[node.resource_type] = (
-                resource_counts.get(node.resource_type, 0) + 1
-            )
+            resource_counts[node.resource_type] = resource_counts.get(node.resource_type, 0) + 1
 
         # Calculate connected components
         visited: set[str] = set()

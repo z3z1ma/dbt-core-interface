@@ -715,7 +715,9 @@ def export_graph(
     """Export a dependency graph to a file."""
     try:
         runner.export_dependency_graph(output_path, focus_node, upstream_depth, downstream_depth)
-        return ServerGraphExportResult(success=True, message="Graph exported successfully", path=output_path)
+        return ServerGraphExportResult(
+            success=True, message="Graph exported successfully", path=output_path
+        )
     except ValueError as e:
         response.status_code = 400
         return ServerErrorContainer(

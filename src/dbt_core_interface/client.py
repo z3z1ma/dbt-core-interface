@@ -375,6 +375,7 @@ class DbtInterfaceClient:
 
         resp = self._request("GET", "/api/v1/generate-sources", params=params)
         return resp.json()
+
     def get_node_lineage(
         self,
         node_id: str,

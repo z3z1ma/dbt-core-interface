@@ -27,9 +27,7 @@ class TestServerErrorException:
     def test_exception_creation(self):
         """Test creating ServerErrorException."""
         error = ServerError(
-            code=ServerErrorCode.CompileSqlFailure,
-            message="Compilation failed",
-            data={"line": 42}
+            code=ServerErrorCode.CompileSqlFailure, message="Compilation failed", data={"line": 42}
         )
         exc = ServerErrorException(error)
         assert exc.code == ServerErrorCode.CompileSqlFailure
@@ -38,11 +36,7 @@ class TestServerErrorException:
 
     def test_exception_str_representation(self):
         """Test string representation of exception."""
-        error = ServerError(
-            code=ServerErrorCode.ExecuteSqlFailure,
-            message="Query failed",
-            data={}
-        )
+        error = ServerError(code=ServerErrorCode.ExecuteSqlFailure, message="Query failed", data={})
         exc = ServerErrorException(error)
         # The actual representation includes the enum class name
         assert "ExecuteSqlFailure" in str(exc)
@@ -51,9 +45,7 @@ class TestServerErrorException:
     def test_exception_is_base_exception(self):
         """Test that ServerErrorException is an Exception."""
         error = ServerError(
-            code=ServerErrorCode.ProjectParseFailure,
-            message="Parse error",
-            data={}
+            code=ServerErrorCode.ProjectParseFailure, message="Parse error", data={}
         )
         exc = ServerErrorException(error)
         assert isinstance(exc, Exception)
@@ -104,7 +96,7 @@ class TestDbtInterfaceClientProperties:
             target="production",
             base_url="http://remote:8581",
             timeout=30.0,
-            unregister_on_close=False
+            unregister_on_close=False,
         )
 
         assert client.project_dir == Path("/path/to/project").resolve()
@@ -122,10 +114,7 @@ class TestDbtInterfaceClientProperties:
         mock_response.json.return_value = {"added": "test", "projects": ["/path"]}
         mock_session.request.return_value = mock_response
 
-        client = DbtInterfaceClient(
-            project_dir="/path",
-            base_url="http://localhost:8581/"
-        )
+        client = DbtInterfaceClient(project_dir="/path", base_url="http://localhost:8581/")
 
         assert client.base_url == "http://localhost:8581"
 
@@ -139,10 +128,7 @@ class TestDbtInterfaceClientProperties:
         mock_response.json.return_value = {"added": "test", "projects": ["/path"]}
         mock_session.request.return_value = mock_response
 
-        client = DbtInterfaceClient(
-            project_dir="/path",
-            timeout=(5.0, 30.0)
-        )
+        client = DbtInterfaceClient(project_dir="/path", timeout=(5.0, 30.0))
 
         assert client.timeout == (5.0, 30.0)
 
@@ -211,7 +197,7 @@ class TestDbtInterfaceClientContextManager:
             "added": "test",
             "projects": ["/path"],
             "removed": "test",
-            "projects": []
+            "projects": [],
         }
         mock_session.request.return_value = mock_response
 

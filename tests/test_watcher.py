@@ -380,7 +380,9 @@ class TestDbtProjectWatcherActiveWatchers:
         watcher1 = MagicMock()
         watcher2 = MagicMock()
 
-        with patch.object(DbtProjectWatcher, "_instances", {project1: watcher1, project2: watcher2}):
+        with patch.object(
+            DbtProjectWatcher, "_instances", {project1: watcher1, project2: watcher2}
+        ):
             watchers = DbtProjectWatcher.active_watchers()
             assert len(watchers) == 2
             assert watcher1 in watchers
