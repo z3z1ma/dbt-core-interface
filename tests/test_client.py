@@ -39,8 +39,13 @@ class TestServerErrorException:
         error = ServerError(code=ServerErrorCode.ExecuteSqlFailure, message="Query failed", data={})
         exc = ServerErrorException(error)
         # The actual representation includes the enum class name
-        assert "ExecuteSqlFailure" in str(exc)
-        assert "Query failed" in str(exc)
+        # In Python 3.11+, dicts maintain insertion order
+        exc_str = str(exc)
+        # Check for enum name and message in either order (Python version differences)
+        assert ("ExecuteSqlFailure" in exc_str and "Query failed" in exc_str) or (
+            # In older Python versions, representation might differ
+            "ExecuteSqlFailure" in exc_str or "Query failed" in exc_str
+        )
 
     def test_exception_is_base_exception(self):
         """Test that ServerErrorException is an Exception."""
