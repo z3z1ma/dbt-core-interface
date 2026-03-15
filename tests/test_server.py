@@ -269,7 +269,7 @@ class TestLoadSavedState:
         """Test loading with invalid state file content."""
         with tempfile.TemporaryDirectory() as tmpdir:
             state_path = Path(tmpdir) / "state.json"
-            state_path.write_text("not a list")
+            state_path.write_text("not a list", encoding="utf-8")
 
             with patch.dict(os.environ, {STATE_FILE: str(state_path)}, clear=False):
                 container = MagicMock()
@@ -290,7 +290,7 @@ class TestLoadSavedState:
                     "vars": {"key": "value"},
                 }
             ]
-            state_path.write_text(json.dumps(state_data))
+            state_path.write_text(json.dumps(state_data), encoding="utf-8")
 
             with patch.dict(os.environ, {STATE_FILE: str(state_path)}, clear=False):
                 container = MagicMock()
@@ -321,7 +321,7 @@ class TestSaveState:
                 _save_state(container)
 
                 assert state_path.exists()
-                content = json.loads(state_path.read_text())
+                content = json.loads(state_path.read_text(encoding="utf-8"))
                 assert isinstance(content, list)
                 assert len(content) == 1
                 assert content[0]["project"] == "test_project"

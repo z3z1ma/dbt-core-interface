@@ -92,7 +92,7 @@ def _run_templater_and_verify_result(
     )
     template_output_folder_path = Path("tests/sqlfluff_templater/fixtures/dbt/templated_output/")
     fixture_path = _get_fixture_path(template_output_folder_path, fname)
-    assert str(templated_file) == fixture_path.read_text()
+    assert str(templated_file) == fixture_path.read_text(encoding="utf-8")
 
 
 def _get_fixture_path(template_output_folder_path: Path, fname: str) -> Path:
@@ -167,7 +167,7 @@ def test__templater_dbt_templating_test_lex(
     """
     path = Path(project_dir) / fname
     config = FluffConfig(configs=DBT_FLUFF_CONFIG)
-    source_dbt_sql = path.read_text()
+    source_dbt_sql = path.read_text(encoding="utf-8")
 
     n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
     print(

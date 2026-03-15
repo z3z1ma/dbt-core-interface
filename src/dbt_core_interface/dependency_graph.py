@@ -283,7 +283,7 @@ class DependencyGraph:
 
         # Write DOT to temporary file
         dot_content = self.to_dot()
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".dot", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".dot", delete=False, encoding="utf-8") as tmp:
             tmp.write(dot_content)
             tmp_path = Path(tmp.name)
 

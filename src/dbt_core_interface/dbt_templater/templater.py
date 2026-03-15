@@ -141,7 +141,7 @@ class DbtTemplater(JinjaTemplater):
             ) from err
 
         if fname and fname not in ("stdin", "<string input>"):
-            with open(fname) as source_dbt_model:
+            with open(fname, encoding="utf-8") as source_dbt_model:
                 source_dbt_sql = source_dbt_model.read()
         else:
             source_dbt_sql = in_str
