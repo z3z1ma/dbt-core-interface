@@ -250,8 +250,8 @@ class TestDbtProjectWatcherCheckForChanges:
         with tempfile.TemporaryDirectory() as tmpdir:
             dbt_yml = Path(tmpdir) / "dbt_project.yml"
             profiles_yml = Path(tmpdir) / "profiles.yml"
-            dbt_yml.write_text("name: test")
-            profiles_yml.write_text("test:")
+            dbt_yml.write_text("name: test", encoding="utf-8")
+            profiles_yml.write_text("test:", encoding="utf-8")
 
             mock_project.dbt_project_yml = dbt_yml
             mock_project.profiles_yml = profiles_yml
@@ -270,8 +270,8 @@ class TestDbtProjectWatcherCheckForChanges:
         with tempfile.TemporaryDirectory() as tmpdir:
             dbt_yml = Path(tmpdir) / "dbt_project.yml"
             profiles_yml = Path(tmpdir) / "profiles.yml"
-            dbt_yml.write_text("name: test")
-            profiles_yml.write_text("test:")
+            dbt_yml.write_text("name: test", encoding="utf-8")
+            profiles_yml.write_text("test:", encoding="utf-8")
 
             mock_project.dbt_project_yml = dbt_yml
             mock_project.profiles_yml = profiles_yml
@@ -281,7 +281,7 @@ class TestDbtProjectWatcherCheckForChanges:
 
             # Modify the config file
             time.sleep(0.01)  # Ensure different mtime
-            dbt_yml.write_text("name: modified")
+            dbt_yml.write_text("name: modified", encoding="utf-8")
 
             change_level = watcher._check_for_changes()
             assert change_level == 2
@@ -452,8 +452,8 @@ class TestDbtProjectWatcherInitializeMtimes:
         with tempfile.TemporaryDirectory() as tmpdir:
             dbt_yml = Path(tmpdir) / "dbt_project.yml"
             profiles_yml = Path(tmpdir) / "profiles.yml"
-            dbt_yml.write_text("name: test")
-            profiles_yml.write_text("test:")
+            dbt_yml.write_text("name: test", encoding="utf-8")
+            profiles_yml.write_text("test:", encoding="utf-8")
 
             mock_project.dbt_project_yml = dbt_yml
             mock_project.profiles_yml = profiles_yml

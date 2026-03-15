@@ -169,7 +169,7 @@ def example_batch_generate_schemas():
 
         # Write to file (in a real scenario)
         output_path = f"models/{model_name}_schema.yml"
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(schema_yml)
 
         print(f"Generated {output_path}")

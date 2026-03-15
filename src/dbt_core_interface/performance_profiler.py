@@ -713,7 +713,7 @@ class PerformanceProfiler:
         metrics = [m for m in metrics if m.timestamp > cutoff]
 
         if format.lower() == "csv":
-            with open(output_path, "w", newline="") as f:
+            with open(output_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(
                     [

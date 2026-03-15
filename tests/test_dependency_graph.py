@@ -358,7 +358,7 @@ class TestDependencyGraph:
 
             assert result == output_path
             assert result.exists()
-            content = result.read_text()
+            content = result.read_text(encoding="utf-8")
             assert "digraph dbt_dependency_graph" in content
 
     def test_save_dot_adds_extension(self) -> None:
