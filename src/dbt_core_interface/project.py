@@ -21,7 +21,7 @@ import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
-from datetime import datetime
+from datetime import date, datetime
 from multiprocessing import get_context as get_mp_context
 from pathlib import Path
 from weakref import WeakValueDictionary
@@ -71,6 +71,15 @@ if t.TYPE_CHECKING:
     from sqlfluff.core.linter.linted_dir import LintingRecord
 
     from dbt_core_interface.graph import DependencyGraph
+
+
+def _json_default(o: t.Any) -> str:
+    """Serialize datetime/date for stdlib json.dump (manifest may contain both)."""
+    if isinstance(o, datetime):
+        return o.isoformat()
+    if isinstance(o, date):
+        return o.isoformat()
+    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
 
 
 def _set_invocation_context() -> None:
@@ -765,7 +774,13 @@ class DbtProject:
         return self.get_relation(database, schema, name) is not None
 
     def write_manifest(self, path: Path | str | None = None) -> None:
-        """Write manifest to disk."""
+        """Write manifest to disk.
+
+        Prefer dbt's artifact ``Writable.write()`` (mashumaro + artifact context),
+        which serializes datetime. Fall back to stdlib json.dump with an isoformat
+        default so YAML-derived ``datetime`` / ``date`` values (e.g. after
+        dbt-osmosis rewrites unquoted timestamps) do not raise TypeError.
+        """
         if path is None:
             path = self.target_path / "manifest.json"
         else:
@@ -777,8 +792,25 @@ class DbtProject:
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        writable = self.manifest.writable_manifest()
+        write = getattr(writable, "write", None)
+        if callable(write):
+            try:
+                write(str(path))
+                logger.info(f"Wrote manifest to {path}")
+                return
+            except TypeError:
+                logger.warning(
+                    "manifest.write() failed to serialize; retrying json.dump with datetime default"
+                )
+
         with open(path, "w") as f:
-            json.dump(self.manifest.writable_manifest().to_dict(), f, separators=(",", ":"))
+            json.dump(
+                writable.to_dict(),
+                f,
+                separators=(",", ":"),
+                default=_json_default,
+            )
 
         logger.info(f"Wrote manifest to {path}")
 
