@@ -65,3 +65,28 @@ def test_setup_logging_idempotent() -> None:
     assert handler_count_after_second_call == handler_count_after_first_call, (
         "setup_logging should be idempotent - should not add duplicate handlers"
     )
+
+
+def test_write_manifest_serializes_datetimes(tmp_path) -> None:
+    """write_manifest must handle datetimes in the manifest (issue #142).
+
+    A microbatch model's `begin` config is parsed into a datetime, which plain
+    json.dump cannot serialize.
+    """
+    import datetime
+    import json
+    from unittest import mock
+
+    from dbt_core_interface import DbtProject
+
+    project = object.__new__(DbtProject)
+    manifest = mock.Mock()
+    manifest.writable_manifest.return_value.to_dict.return_value = {
+        "nodes": {"model.p.events": {"config": {"begin": datetime.datetime(2024, 3, 1)}}}
+    }
+    project._manifest = manifest
+
+    project.write_manifest(tmp_path)
+
+    written = json.loads((tmp_path / "manifest.json").read_text())
+    assert written["nodes"]["model.p.events"]["config"]["begin"] == "2024-03-01T00:00:00"

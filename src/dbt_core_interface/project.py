@@ -59,6 +59,7 @@ from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 from dbt_common.events.event_manager_client import add_logger_to_manager
 from dbt_common.events.logger import LoggerConfig
+from dbt_common.utils.encoding import JSONEncoder as DbtJSONEncoder
 
 from dbt_core_interface.test_suggester import (
     ProjectTestPatterns,
@@ -778,7 +779,14 @@ class DbtProject:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w") as f:
-            json.dump(self.manifest.writable_manifest().to_dict(), f, separators=(",", ":"))
+            # dbt's encoder, as dbt-core uses for its own artifacts: to_dict() can hold datetimes,
+            # e.g. a microbatch model's `begin` config, which plain json.dump cannot serialize.
+            json.dump(
+                self.manifest.writable_manifest().to_dict(),
+                f,
+                separators=(",", ":"),
+                cls=DbtJSONEncoder,
+            )
 
         logger.info(f"Wrote manifest to {path}")
 
